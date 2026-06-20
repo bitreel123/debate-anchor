@@ -1,6 +1,4 @@
 import judgeHero from "@/assets/judge-hero.png";
-import { Link } from "@tanstack/react-router";
-import { ArrowUpRight } from "lucide-react";
 
 export function Hero() {
   return (
@@ -22,13 +20,6 @@ export function Hero() {
             <span className="font-display font-bold text-lg">Debate · Research</span>
           </div>
         </div>
-        <Link
-          to="/dashboard"
-          className="mt-8 inline-flex items-center gap-2 bg-ink text-paper rounded-2xl px-7 py-4 font-semibold text-base hover:bg-ink/90 transition shadow-[6px_6px_0_var(--accent-lemon)] border-2 border-ink"
-        >
-          Launch App
-          <ArrowUpRight className="size-5" />
-        </Link>
       </div>
       <div className="relative">
         <div className="absolute inset-0 bg-grid rounded-3xl opacity-60" />
