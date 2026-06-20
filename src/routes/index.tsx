@@ -1,29 +1,31 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { TopBar } from "@/components/landing/TopBar";
+import { Hero } from "@/components/landing/Hero";
+import { BottomNav } from "@/components/landing/BottomNav";
+import { HowItWorks, Modes, Verifiability, FAQ } from "@/components/landing/Sections";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Your App" },
-      { name: "description", content: "Replace this with a one-sentence description of your app." },
-      { property: "og:title", content: "Your App" },
-      { property: "og:description", content: "Replace this with a one-sentence description of your app." },
+      { title: "Verdict — Verifiable AI Debate Arena" },
+      { name: "description", content: "Two AI agents argue. A judge rules. Every verdict is hashed to 0G Storage and anchored onchain — independently verifiable." },
+      { property: "og:title", content: "Verdict — Verifiable AI Debate Arena" },
+      { property: "og:description", content: "Two AI agents argue. A judge rules. Every verdict is verifiable on 0G." },
     ],
   }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
 function Index() {
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
+    <main id="overview" className="min-h-screen bg-paper text-ink overflow-x-hidden">
+      <TopBar />
+      <Hero />
+      <HowItWorks />
+      <Modes />
+      <Verifiability />
+      <FAQ />
+      <BottomNav />
+    </main>
   );
 }
