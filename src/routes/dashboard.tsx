@@ -1,256 +1,242 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { Wallet, Gavel, ArrowLeft, History, Send, Sparkles, Scale } from "lucide-react";
+import { useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
+import { Wallet, Gavel, ArrowLeft, History, Send, Sparkles, Scale, ExternalLink, Loader2, CheckCircle2, Circle, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import courtroom from "@/assets/courtroom-bg.jpg";
 import judgeImg from "@/assets/judge-cartoon.png";
 import agentAImg from "@/assets/agent-a-cartoon.png";
 import agentBImg from "@/assets/agent-b-cartoon.png";
+import { useWallet } from "@/lib/wallet";
+import { runDebate } from "@/lib/inference.functions";
+import { pinTranscript } from "@/lib/storage.functions";
+import { anchorDebate } from "@/lib/registry";
+import { OG_GALILEO, VERDICT_REGISTRY_ADDRESS } from "@/lib/og-chain";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
     meta: [
       { title: "Verdict — Courtroom" },
-      { name: "description", content: "Step into the OG Verdict courtroom. Submit a topic and watch two AI agents debate before the judge." },
+      { name: "description", content: "Step into the OG Verdict courtroom. Submit a topic, watch two AI agents debate, anchor the verdict to 0G Chain." },
     ],
   }),
   component: Dashboard,
 });
 
-type Speaker = "judge" | "a" | "b" | null;
+type Line = { role: "A" | "B" | "JUDGE"; round: number; text: string };
+type Stage = "idle" | "thinking" | "ready-to-anchor" | "anchoring" | "anchored";
 
-const JUDGE_LINES = [
-  "Welcome to OG Verdict Court. Court is now in session!",
-  "Order, order! State your topic and the debate shall begin.",
-  "I will weigh both sides and deliver a verdict anchored to 0G.",
-  "Remember — every word is hashed and stored forever.",
-];
-const AGENT_A_LINES = [
-  "I'll argue the affirmative. Bring me the topic!",
-  "Evidence, logic, and rhetoric — my specialty.",
-  "I'm ready to defend the case for the proposition.",
-];
-const AGENT_B_LINES = [
-  "And I'll take the opposing view. Let's reason.",
-  "I'll cross-examine every claim with citations.",
-  "The contrary position has plenty to stand on.",
-];
+function short(a?: string | null) { return a ? `${a.slice(0, 6)}…${a.slice(-4)}` : ""; }
 
 function Dashboard() {
+  const wallet = useWallet();
+  const runDebateFn = useServerFn(runDebate);
+  const pinTranscriptFn = useServerFn(pinTranscript);
+
   const [mode, setMode] = useState<"debate" | "research">("debate");
   const [prompt, setPrompt] = useState("");
-  const [speaking, setSpeaking] = useState<Speaker>("judge");
-  const [bubbles, setBubbles] = useState({
-    judge: JUDGE_LINES[0],
-    a: AGENT_A_LINES[0],
-    b: AGENT_B_LINES[0],
-  });
-  const [walletConnected, setWalletConnected] = useState(false);
+  const [stage, setStage] = useState<Stage>("idle");
+  const [transcript, setTranscript] = useState<Line[]>([]);
+  const [winner, setWinner] = useState<string>("");
+  const [speaking, setSpeaking] = useState<"judge" | "a" | "b" | null>("judge");
+  const [welcome, setWelcome] = useState("Welcome to OG Verdict Court. Submit a topic and I'll convene the agents.");
+  const [storage, setStorage] = useState<{ root: string; backend: string } | null>(null);
+  const [anchor, setAnchor] = useState<{ txHash: string; explorerUrl: string; transcriptHash: string } | null>(null);
 
-  // Auto-cycle judge welcome after mount
-  useEffect(() => {
-    const t = setTimeout(() => setSpeaking(null), 4200);
-    return () => clearTimeout(t);
-  }, []);
-
-  const speak = (who: Exclude<Speaker, null>) => {
-    const pools = { judge: JUDGE_LINES, a: AGENT_A_LINES, b: AGENT_B_LINES };
-    const pool = pools[who];
-    const next = pool[Math.floor(Math.random() * pool.length)];
-    setBubbles(prev => ({ ...prev, [who]: next }));
-    setSpeaking(who);
-    setTimeout(() => setSpeaking(s => (s === who ? null : s)), 3500);
+  const onConnect = async () => {
+    try {
+      if (wallet.address) { wallet.disconnect(); toast("Wallet disconnected"); return; }
+      await wallet.connect();
+      toast.success("Connected to 0G Galileo");
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
   };
 
-  const onSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!prompt.trim()) {
-      toast("Enter a topic first", { description: "Give the court something to debate." });
-      return;
-    }
-    setBubbles({
-      judge: `Case opened: "${prompt.slice(0, 60)}${prompt.length > 60 ? "…" : ""}". Agents, take your podiums!`,
-      a: "I accept the affirmative position. Preparing opening statement…",
-      b: "Opposition is ready. Let's begin cross-examination.",
-    });
+    if (!prompt.trim()) { toast("Enter a topic first"); return; }
+    setStage("thinking");
+    setTranscript([]); setWinner(""); setStorage(null); setAnchor(null);
+    setWelcome(mode === "debate" ? "Court is in session. Three rounds." : "Researchers — investigate.");
     setSpeaking("judge");
-    toast("Court is in session", { description: `Mode: ${mode}. Engine wiring in the next build.` });
-    setTimeout(() => setSpeaking("a"), 1500);
-    setTimeout(() => setSpeaking("b"), 3000);
-    setTimeout(() => setSpeaking(null), 4500);
+
+    try {
+      const result = await runDebateFn({ data: { topic: prompt, mode } });
+      setTranscript(result.transcript);
+      setWinner(result.winner);
+
+      // Animate speakers in sequence
+      result.transcript.forEach((line, i) => {
+        setTimeout(() => {
+          setSpeaking(line.role === "A" ? "a" : line.role === "B" ? "b" : "judge");
+        }, i * 250);
+      });
+
+      // Pin to 0G Storage
+      const pin = await pinTranscriptFn({ data: { transcript: result.transcript, topic: prompt } });
+      setStorage({ root: pin.storageRoot, backend: pin.backend });
+      setStage("ready-to-anchor");
+      toast.success("Debate complete. Anchor to 0G Chain to finalize.");
+    } catch (err) {
+      console.error(err);
+      toast.error((err as Error).message || "Inference failed");
+      setStage("idle");
+    }
   };
 
-  const onConnect = () => {
-    if (walletConnected) {
-      setWalletConnected(false);
-      toast("Wallet disconnected");
+  const handleAnchor = async () => {
+    if (!wallet.address) { toast("Connect wallet first"); await onConnect(); return; }
+    if (!storage) return;
+    if (!VERDICT_REGISTRY_ADDRESS) {
+      toast.error("Contract not deployed yet — see contracts/README.md");
       return;
     }
-    setWalletConnected(true);
-    toast("Wallet linked (demo)", { description: "MetaMask + 0G Galileo wiring in the next build." });
+    setStage("anchoring");
+    try {
+      const signer = await wallet.getSigner();
+      const res = await anchorDebate(signer, {
+        transcript, storageRoot: storage.root, topic: prompt, winner, mode,
+      });
+      setAnchor({ txHash: res.txHash, explorerUrl: res.explorerUrl, transcriptHash: res.transcriptHash });
+      setStage("anchored");
+      toast.success("Anchored to 0G Chain ✓");
+    } catch (e) {
+      toast.error((e as Error).message || "Tx failed");
+      setStage("ready-to-anchor");
+    }
   };
 
   return (
-    <main className="min-h-screen bg-paper text-ink flex flex-col overflow-hidden">
+    <main className="min-h-screen bg-paper text-ink flex flex-col">
       <Toaster position="top-center" />
 
       {/* Top bar */}
       <header className="flex items-center justify-between p-3 gap-3 z-30">
         <div className="flex items-center gap-2">
-          <Link to="/" className="bg-white rounded-2xl px-4 py-2.5 shadow-sm border border-ink/10 flex items-center gap-2 hover:bg-ink/5 transition">
+          <Link to="/" className="bg-white rounded-2xl px-4 py-2.5 shadow-sm border border-ink/10 flex items-center gap-2 hover:bg-ink/5">
             <ArrowLeft className="size-4" />
-            <span className="font-display font-black text-ink">Verdict</span>
+            <span className="font-display font-black">Verdict</span>
           </Link>
-          <div className="hidden md:flex items-center gap-2 px-3 py-2.5 text-sm text-ink/60">
-            <Scale className="size-4" />
-            <span className="font-semibold text-ink">OG Verdict Court</span>
+          <div className="hidden md:flex items-center gap-2 px-3 py-2.5 text-sm">
+            <Scale className="size-4" /><span className="font-semibold">OG Verdict Court</span>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Mode toggle */}
-          <div className="hidden sm:flex items-center gap-1 bg-white rounded-2xl p-1 border border-ink/10 shadow-sm">
+          <div className="flex items-center gap-1 bg-white rounded-2xl p-1 border border-ink/10 shadow-sm">
             {(["debate", "research"] as const).map(m => (
-              <button
-                key={m}
-                onClick={() => { setMode(m); toast(`${m === "debate" ? "Debate" : "Research"} mode`); }}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold capitalize transition ${
-                  mode === m ? "bg-ink text-paper" : "text-ink/70 hover:text-ink"
-                }`}
-              >
+              <button key={m} type="button" onClick={() => setMode(m)}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold capitalize transition ${mode === m ? "bg-ink text-paper" : "text-ink/70 hover:text-ink"}`}>
                 {m}
               </button>
             ))}
           </div>
 
-          <button
-            onClick={onConnect}
+          <button onClick={onConnect} disabled={wallet.connecting}
             className={`rounded-2xl px-5 py-2.5 font-semibold text-sm flex items-center gap-2 transition shadow-sm border-2 ${
-              walletConnected
-                ? "bg-accent-mint text-ink border-ink"
-                : "bg-ink text-paper border-ink hover:bg-ink/90"
-            }`}
-          >
+              wallet.address ? "bg-accent-mint text-ink border-ink" : "bg-ink text-paper border-ink hover:bg-ink/90"
+            }`}>
             <Wallet className="size-4" />
-            {walletConnected ? "0x12…aB · Connected" : "Connect Wallet"}
+            {wallet.connecting ? "Connecting…" : wallet.address ? `${short(wallet.address)} · 0G` : "Connect Wallet"}
           </button>
         </div>
       </header>
 
       {/* Courtroom stage */}
-      <section className="relative flex-1 mx-3 mb-3 rounded-3xl overflow-hidden border-2 border-ink shadow-[6px_6px_0_var(--ink)] bg-[#3a2410]">
-        <img
-          src={courtroom}
-          alt="Cartoon American courtroom interior with judge's bench, podiums, flags and jury box"
-          className="absolute inset-0 w-full h-full object-cover"
-        />
-        {/* warm vignette and bottom fade for composer legibility */}
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-paper/95" />
+      <section className="relative flex-1 mx-3 mb-3 rounded-3xl overflow-hidden border-2 border-ink shadow-[6px_6px_0_var(--ink)] bg-[#3a2410] min-h-[560px]">
+        <img src={courtroom} alt="Cartoon American courtroom" className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-paper/95 pointer-events-none" />
 
-        {/* Judge — center back, on the bench */}
-        <Character
-          src={judgeImg}
-          alt="Cartoon judge"
-          onClick={() => speak("judge")}
-          className="left-1/2 top-[22%] -translate-x-1/2 w-[180px] sm:w-[220px] md:w-[260px]"
-          bubble={bubbles.judge}
-          bubbleActive={speaking === "judge"}
-          bubbleColor="bg-white"
-          bubblePos="top"
-          label="Judge"
-        />
+        {/* Judge */}
+        <Character src={judgeImg} alt="Judge" label="Judge"
+          className="left-1/2 top-[12%] -translate-x-1/2 w-[180px] sm:w-[220px] md:w-[240px]"
+          bubble={lastLine(transcript, "JUDGE") ?? welcome}
+          active={speaking === "judge"} color="bg-white" pos="top" />
 
-        {/* Agent A — left podium */}
-        <Character
-          src={agentAImg}
-          alt="Cartoon orange AI agent A"
-          onClick={() => speak("a")}
-          className="left-[6%] md:left-[12%] bottom-[18%] w-[140px] sm:w-[170px] md:w-[200px]"
-          bubble={bubbles.a}
-          bubbleActive={speaking === "a"}
-          bubbleColor="bg-accent-orange"
-          bubblePos="right"
-          label="Agent A · Pro"
-        />
+        {/* Agent A */}
+        <Character src={agentAImg} alt="Agent A" label="Agent A · Pro"
+          className="left-[6%] md:left-[10%] bottom-[24%] w-[140px] sm:w-[170px] md:w-[190px]"
+          bubble={lastLine(transcript, "A") ?? "Ready to argue the affirmative."}
+          active={speaking === "a"} color="bg-accent-orange" pos="right" />
 
-        {/* Agent B — right podium */}
-        <Character
-          src={agentBImg}
-          alt="Cartoon blue AI agent B"
-          onClick={() => speak("b")}
-          className="right-[6%] md:right-[12%] bottom-[18%] w-[140px] sm:w-[170px] md:w-[200px]"
-          bubble={bubbles.b}
-          bubbleActive={speaking === "b"}
-          bubbleColor="bg-accent-blue"
-          bubbleTextPaper
-          bubblePos="left"
-          label="Agent B · Con"
-        />
+        {/* Agent B */}
+        <Character src={agentBImg} alt="Agent B" label="Agent B · Con"
+          className="right-[6%] md:right-[10%] bottom-[24%] w-[140px] sm:w-[170px] md:w-[190px]"
+          bubble={lastLine(transcript, "B") ?? "Ready to argue the opposition."}
+          active={speaking === "b"} color="bg-accent-blue" textPaper pos="left" />
 
-        {/* Recent debates rail */}
-        <aside className="absolute top-4 right-4 hidden xl:block w-60">
+        {/* 0G status rail */}
+        <aside className="absolute top-4 right-4 hidden lg:block w-72 z-20">
           <div className="bg-white/95 backdrop-blur rounded-2xl border-2 border-ink p-4 shadow-[4px_4px_0_var(--ink)]">
             <div className="flex items-center gap-2 mb-3">
-              <History className="size-4 text-ink" />
-              <span className="font-display font-bold text-ink text-sm">Case Files</span>
+              <History className="size-4" /><span className="font-display font-bold text-sm">0G Stack</span>
             </div>
-            <ul className="space-y-2">
-              {["—", "—", "—"].map((_, i) => (
-                <li key={i} className="rounded-xl bg-paper border border-ink/10 p-3">
-                  <div className="h-2 w-3/4 bg-ink/10 rounded-full mb-1.5" />
-                  <div className="h-2 w-1/2 bg-ink/5 rounded-full" />
-                </li>
-              ))}
+            <ul className="space-y-2 text-xs">
+              <StatusRow ok={!!wallet.address && wallet.isGalileo} label="Wallet · Galileo testnet"
+                detail={wallet.address ? short(wallet.address) : "Not connected"} />
+              <StatusRow ok={stage === "anchored" || stage === "ready-to-anchor" || stage === "anchoring"}
+                label="0G Compute · 3 agents" detail="Inference via gateway" />
+              <StatusRow ok={!!storage} label="0G Storage · transcript pinned"
+                detail={storage ? `${storage.backend}` : "—"} />
+              <StatusRow ok={!!anchor} label="0G Chain · VerdictRegistry"
+                detail={VERDICT_REGISTRY_ADDRESS ? short(VERDICT_REGISTRY_ADDRESS) : "Deploy contract"} />
             </ul>
-            <p className="mt-3 text-[10px] text-ink/40 font-mono">Connect wallet to load history.</p>
+            {storage && (
+              <div className="mt-3 pt-3 border-t border-ink/10">
+                <div className="text-[10px] font-mono text-ink/50 mb-1">STORAGE ROOT</div>
+                <div className="text-[10px] font-mono break-all">{storage.root}</div>
+              </div>
+            )}
+            {anchor && (
+              <div className="mt-3 pt-3 border-t border-ink/10">
+                <div className="text-[10px] font-mono text-ink/50 mb-1">TX HASH</div>
+                <a href={anchor.explorerUrl} target="_blank" rel="noreferrer" className="text-[10px] font-mono break-all underline flex items-start gap-1">
+                  {anchor.txHash} <ExternalLink className="size-3 shrink-0" />
+                </a>
+              </div>
+            )}
           </div>
         </aside>
 
-        {/* Prompt composer */}
-        <div className="absolute inset-x-0 bottom-0 p-4 md:p-6">
-          <form
-            onSubmit={onSubmit}
-            className="max-w-3xl mx-auto bg-white rounded-3xl border-2 border-ink shadow-[6px_6px_0_var(--ink)] p-4"
-          >
-            <div className="flex items-center gap-2 mb-3">
-              <div className="flex items-center gap-1 sm:hidden">
-                {(["debate", "research"] as const).map(m => (
-                  <button
-                    type="button"
-                    key={m}
-                    onClick={() => setMode(m)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-semibold capitalize transition border-2 ${
-                      mode === m ? "bg-ink text-paper border-ink" : "bg-paper text-ink border-ink/10"
-                    }`}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center gap-2 text-xs text-ink/50 font-mono">
+        {/* Composer */}
+        <div className="absolute inset-x-0 bottom-0 p-4 md:p-6 z-10">
+          <form onSubmit={handleSubmit} className="max-w-3xl mx-auto bg-white rounded-3xl border-2 border-ink shadow-[6px_6px_0_var(--ink)] p-4">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="flex items-center gap-2 text-xs text-ink/60 font-mono">
                 <Sparkles className="size-3.5" />
-                <span>{mode === "debate" ? "3 rounds · 2 agents · 1 judge" : "Synthesis · web-search evidence"}</span>
+                <span>{mode === "debate" ? "3 rounds · 2 agents · 1 judge" : "Two researchers · judge synthesis"}</span>
               </div>
+              {winner && <span className="text-xs font-mono px-2 py-1 rounded-full bg-accent-lemon border border-ink">Verdict: {winner}</span>}
             </div>
             <div className="flex items-end gap-3">
-              <textarea
-                value={prompt}
-                onChange={e => setPrompt(e.target.value)}
+              <textarea value={prompt} onChange={e => setPrompt(e.target.value)} disabled={stage === "thinking"}
                 placeholder={mode === "debate" ? "Should AI agents be allowed to own property?" : "What does recent research say about…?"}
                 rows={2}
-                className="flex-1 resize-none bg-transparent text-ink placeholder:text-ink/40 outline-none text-base p-2"
-              />
-              <button
-                type="submit"
-                className="bg-accent-lemon text-ink rounded-2xl px-4 py-3 border-2 border-ink hover:scale-[1.03] transition shrink-0 flex items-center gap-2 font-semibold text-sm shadow-[3px_3px_0_var(--ink)]"
-                aria-label="Start debate"
-              >
-                <Gavel className="size-4" strokeWidth={2.5} />
-                <span className="hidden sm:inline">Call to Order</span>
-                <Send className="size-4 sm:hidden" />
-              </button>
+                className="flex-1 resize-none bg-transparent placeholder:text-ink/40 outline-none text-base p-2 disabled:opacity-60" />
+              {stage === "ready-to-anchor" || stage === "anchoring" || stage === "anchored" ? (
+                <button type="button" onClick={handleAnchor} disabled={stage === "anchoring" || stage === "anchored"}
+                  className="bg-accent-mint text-ink rounded-2xl px-4 py-3 border-2 border-ink hover:scale-[1.03] transition shrink-0 flex items-center gap-2 font-semibold text-sm shadow-[3px_3px_0_var(--ink)] disabled:opacity-70">
+                  {stage === "anchoring" ? <Loader2 className="size-4 animate-spin" /> :
+                   stage === "anchored" ? <CheckCircle2 className="size-4" /> : <Scale className="size-4" />}
+                  <span>{stage === "anchored" ? "Anchored" : stage === "anchoring" ? "Signing…" : "Anchor to 0G"}</span>
+                </button>
+              ) : (
+                <button type="submit" disabled={stage === "thinking"}
+                  className="bg-accent-lemon text-ink rounded-2xl px-4 py-3 border-2 border-ink hover:scale-[1.03] transition shrink-0 flex items-center gap-2 font-semibold text-sm shadow-[3px_3px_0_var(--ink)] disabled:opacity-70">
+                  {stage === "thinking" ? <Loader2 className="size-4 animate-spin" /> : <Gavel className="size-4" />}
+                  <span className="hidden sm:inline">{stage === "thinking" ? "Deliberating…" : "Call to Order"}</span>
+                  <Send className="size-4 sm:hidden" />
+                </button>
+              )}
             </div>
+            {!VERDICT_REGISTRY_ADDRESS && (
+              <p className="mt-2 text-[11px] text-ink/60 font-mono flex items-center gap-1">
+                <AlertCircle className="size-3" />
+                Set <code className="bg-ink/10 px-1 rounded">VITE_VERDICT_REGISTRY_ADDRESS</code> after deploying — see <code className="bg-ink/10 px-1 rounded">contracts/README.md</code>. Faucet: <a className="underline" href="https://faucet.0g.ai" target="_blank" rel="noreferrer">faucet.0g.ai</a>. RPC: {OG_GALILEO.rpcUrls[0]}.
+              </p>
+            )}
           </form>
         </div>
       </section>
@@ -258,70 +244,39 @@ function Dashboard() {
   );
 }
 
-function Character({
-  src,
-  alt,
-  onClick,
-  className,
-  bubble,
-  bubbleActive,
-  bubbleColor,
-  bubbleTextPaper,
-  bubblePos,
-  label,
-}: {
-  src: string;
-  alt: string;
-  onClick: () => void;
-  className: string;
-  bubble: string;
-  bubbleActive: boolean;
-  bubbleColor: string;
-  bubbleTextPaper?: boolean;
-  bubblePos: "top" | "left" | "right";
-  label: string;
-}) {
-  const bubblePositionClass =
-    bubblePos === "top"
-      ? "bottom-full mb-3 left-1/2 -translate-x-1/2"
-      : bubblePos === "left"
-      ? "right-full mr-3 top-2"
-      : "left-full ml-3 top-2";
+function lastLine(t: Line[], role: "A" | "B" | "JUDGE") {
+  for (let i = t.length - 1; i >= 0; i--) if (t[i].role === role) return t[i].text;
+  return null;
+}
 
+function StatusRow({ ok, label, detail }: { ok: boolean; label: string; detail: string }) {
   return (
-    <div className={`absolute ${className} group`}>
-      {/* Speech bubble */}
-      <div
-        className={`absolute ${bubblePositionClass} w-[220px] sm:w-[260px] transition-all duration-300 ${
-          bubbleActive ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 translate-y-1 pointer-events-none"
-        }`}
-      >
-        <div
-          className={`${bubbleColor} ${bubbleTextPaper ? "text-paper" : "text-ink"} rounded-2xl px-4 py-3 border-2 border-ink shadow-[4px_4px_0_var(--ink)]`}
-        >
-          <div className={`text-[10px] font-mono uppercase mb-1 ${bubbleTextPaper ? "text-paper/70" : "text-ink/50"}`}>
-            {label}
-          </div>
-          <p className="font-medium text-sm leading-snug">{bubble}</p>
+    <li className="flex items-start gap-2">
+      {ok ? <CheckCircle2 className="size-4 text-accent-mint shrink-0 mt-0.5" />
+          : <Circle className="size-4 text-ink/30 shrink-0 mt-0.5" />}
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold">{label}</div>
+        <div className="text-ink/50 font-mono truncate">{detail}</div>
+      </div>
+    </li>
+  );
+}
+
+function Character({ src, alt, label, className, bubble, active, color, textPaper, pos }: {
+  src: string; alt: string; label: string; className: string; bubble: string;
+  active: boolean; color: string; textPaper?: boolean; pos: "top" | "left" | "right";
+}) {
+  const bp = pos === "top" ? "bottom-full mb-3 left-1/2 -translate-x-1/2"
+           : pos === "left" ? "right-full mr-3 top-2" : "left-full ml-3 top-2";
+  return (
+    <div className={`absolute ${className}`}>
+      <div className={`absolute ${bp} w-[220px] sm:w-[260px] transition-all duration-300 ${active ? "opacity-100 scale-100" : "opacity-90 scale-95"}`}>
+        <div className={`${color} ${textPaper ? "text-paper" : "text-ink"} rounded-2xl px-4 py-3 border-2 border-ink shadow-[4px_4px_0_var(--ink)]`}>
+          <div className={`text-[10px] font-mono uppercase mb-1 ${textPaper ? "text-paper/70" : "text-ink/50"}`}>{label}</div>
+          <p className="font-medium text-sm leading-snug line-clamp-5">{bubble}</p>
         </div>
       </div>
-
-      <button
-        type="button"
-        onClick={onClick}
-        className="block w-full transition-transform hover:-translate-y-1 active:translate-y-0 cursor-pointer focus:outline-none"
-        aria-label={`Talk to ${label}`}
-      >
-        <img
-          src={src}
-          alt={alt}
-          className={`w-full h-auto drop-shadow-2xl ${bubbleActive ? "animate-bounce-slow" : ""}`}
-          loading="lazy"
-        />
-        <span className="block mt-1 mx-auto w-fit px-2 py-0.5 rounded-full bg-white/90 border border-ink/20 text-[10px] font-mono uppercase tracking-wide text-ink opacity-0 group-hover:opacity-100 transition">
-          {label}
-        </span>
-      </button>
+      <img src={src} alt={alt} className={`w-full h-auto drop-shadow-2xl pointer-events-none ${active ? "animate-bounce-slow" : ""}`} />
     </div>
   );
 }
