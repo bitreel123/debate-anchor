@@ -1,4 +1,6 @@
 import judgeHero from "@/assets/judge-hero.png";
+import { Link } from "@tanstack/react-router";
+import { ArrowUpRight } from "lucide-react";
 
 export function Hero() {
   return (
