@@ -32,12 +32,6 @@ export function BottomNav() {
         Launch App
         <ArrowUpRight className="size-4" />
       </Link>
-      <button
-        className="pointer-events-auto bg-accent-lemon text-ink rounded-2xl w-12 flex items-center justify-center hover:scale-[1.03] transition"
-        aria-label="Decoration"
-      >
-        <ArrowUpRight className="size-5" />
-      </button>
     </nav>
   );
 }
