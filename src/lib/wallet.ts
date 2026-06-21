@@ -6,6 +6,7 @@ type Eth = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
   on?: (event: string, cb: (...a: unknown[]) => void) => void;
   removeListener?: (event: string, cb: (...a: unknown[]) => void) => void;
+  _metamask?: { isUnlocked?: () => Promise<boolean> };
   isMetaMask?: boolean;
   isTrust?: boolean;
   isCoinbaseWallet?: boolean;
@@ -13,24 +14,52 @@ type Eth = {
   providers?: Eth[];
 };
 
+type Eip6963Provider = {
+  info?: { name?: string; rdns?: string };
+  provider?: Eth;
+};
+
 // Pick MetaMask specifically when multiple wallets inject window.ethereum.
 // Trust/Coinbase/Phantom often hijack window.ethereum; EIP-5749/legacy `providers`
 // array lets us pick the real MetaMask provider.
+function isRealMetaMask(p?: Eth | null) {
+  return !!p?.isMetaMask && !!p._metamask && !p.isTrust && !p.isCoinbaseWallet && !p.isPhantom;
+}
+
 function pickMetaMask(eth: Eth): Eth | null {
-  const isRealMM = (p: Eth) => !!p?.isMetaMask && !p.isTrust && !p.isCoinbaseWallet && !p.isPhantom;
   if (eth.providers && Array.isArray(eth.providers)) {
-    const mm = eth.providers.find(isRealMM);
+    const mm = eth.providers.find(isRealMetaMask);
     if (mm) return mm;
   }
-  if (isRealMM(eth)) return eth;
+  if (isRealMetaMask(eth)) return eth;
   return null;
 }
 
-function getEthereum(): Eth | null {
+async function getEthereum(): Promise<Eth | null> {
   if (typeof window === "undefined") return null;
-  const root = (window as unknown as { ethereum?: Eth }).ethereum ?? null;
+  const win = window as unknown as {
+    ethereum?: Eth;
+    addEventListener: Window["addEventListener"];
+    removeEventListener: Window["removeEventListener"];
+    dispatchEvent: Window["dispatchEvent"];
+  };
+
+  const announced: Eip6963Provider[] = [];
+  const onAnnounce = (event: Event) =>
+    announced.push((event as CustomEvent<Eip6963Provider>).detail);
+  win.addEventListener("eip6963:announceProvider", onAnnounce as EventListener);
+  win.dispatchEvent(new Event("eip6963:requestProvider"));
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  win.removeEventListener("eip6963:announceProvider", onAnnounce as EventListener);
+
+  const eip6963MetaMask = announced.find(
+    (entry) => entry.info?.rdns === "io.metamask" || entry.info?.name?.toLowerCase() === "metamask",
+  )?.provider;
+  if (eip6963MetaMask) return eip6963MetaMask;
+
+  const root = win.ethereum ?? null;
   if (!root) return null;
-  return pickMetaMask(root) ?? root;
+  return pickMetaMask(root);
 }
 
 export async function ensureGalileo(eth: Eth) {
@@ -44,13 +73,15 @@ export async function ensureGalileo(eth: Eth) {
     if (code === 4902 || code === -32603) {
       await eth.request({
         method: "wallet_addEthereumChain",
-        params: [{
-          chainId: OG_GALILEO.chainIdHex,
-          chainName: OG_GALILEO.chainName,
-          rpcUrls: [...OG_GALILEO.rpcUrls],
-          blockExplorerUrls: [...OG_GALILEO.blockExplorerUrls],
-          nativeCurrency: OG_GALILEO.nativeCurrency,
-        }],
+        params: [
+          {
+            chainId: OG_GALILEO.chainIdHex,
+            chainName: OG_GALILEO.chainName,
+            rpcUrls: [...OG_GALILEO.rpcUrls],
+            blockExplorerUrls: [...OG_GALILEO.blockExplorerUrls],
+            nativeCurrency: OG_GALILEO.nativeCurrency,
+          },
+        ],
       });
     } else {
       throw err;
@@ -64,30 +95,45 @@ export function useWallet() {
   const [connecting, setConnecting] = useState(false);
 
   useEffect(() => {
-    const eth = getEthereum();
-    if (!eth) return;
-    eth.request({ method: "eth_accounts" }).then((accs) => {
-      const a = (accs as string[])[0];
-      if (a) setAddress(a);
-    }).catch(() => {});
-    eth.request({ method: "eth_chainId" }).then((c) => setChainId(c as string)).catch(() => {});
+    let cleanup: (() => void) | undefined;
+    void getEthereum().then((eth) => {
+      if (!eth) return;
+      eth
+        .request({ method: "eth_accounts" })
+        .then((accs) => {
+          const a = (accs as string[])[0];
+          if (a) setAddress(a);
+        })
+        .catch(() => {});
+      eth
+        .request({ method: "eth_chainId" })
+        .then((c) => setChainId(c as string))
+        .catch(() => {});
 
-    const onAccounts = (...args: unknown[]) => {
-      const accs = args[0] as string[];
-      setAddress(accs?.[0] ?? null);
-    };
-    const onChain = (...args: unknown[]) => setChainId(args[0] as string);
-    eth.on?.("accountsChanged", onAccounts);
-    eth.on?.("chainChanged", onChain);
+      const onAccounts = (...args: unknown[]) => {
+        const accs = args[0] as string[];
+        setAddress(accs?.[0] ?? null);
+      };
+      const onChain = (...args: unknown[]) => setChainId(args[0] as string);
+      eth.on?.("accountsChanged", onAccounts);
+      eth.on?.("chainChanged", onChain);
+      cleanup = () => {
+        eth.removeListener?.("accountsChanged", onAccounts);
+        eth.removeListener?.("chainChanged", onChain);
+      };
+    });
     return () => {
-      eth.removeListener?.("accountsChanged", onAccounts);
-      eth.removeListener?.("chainChanged", onChain);
+      cleanup?.();
     };
   }, []);
 
   const connect = useCallback(async () => {
-    const eth = getEthereum();
-    if (!eth) throw new Error("MetaMask not detected. Install from metamask.io");
+    const eth = await getEthereum();
+    if (!eth) {
+      throw new Error(
+        "MetaMask only: disable Trust Wallet injection or install/unlock the MetaMask extension.",
+      );
+    }
     setConnecting(true);
     try {
       const accs = (await eth.request({ method: "eth_requestAccounts" })) as string[];
@@ -103,10 +149,12 @@ export function useWallet() {
   const disconnect = useCallback(() => setAddress(null), []);
 
   const getSigner = useCallback(async (): Promise<JsonRpcSigner> => {
-    const eth = getEthereum();
-    if (!eth) throw new Error("No wallet");
+    const eth = await getEthereum();
+    if (!eth) throw new Error("MetaMask not detected");
     await ensureGalileo(eth);
-    const provider = new BrowserProvider(eth as unknown as ConstructorParameters<typeof BrowserProvider>[0]);
+    const provider = new BrowserProvider(
+      eth as unknown as ConstructorParameters<typeof BrowserProvider>[0],
+    );
     return provider.getSigner();
   }, []);
 
