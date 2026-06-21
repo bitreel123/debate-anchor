@@ -105,24 +105,30 @@ export function useWallet() {
   useEffect(() => {
     let cleanup: (() => void) | undefined;
     void getEthereum().then((eth) => {
-    if (!eth) return;
-    eth.request({ method: "eth_accounts" }).then((accs) => {
-      const a = (accs as string[])[0];
-      if (a) setAddress(a);
-    }).catch(() => {});
-    eth.request({ method: "eth_chainId" }).then((c) => setChainId(c as string)).catch(() => {});
+      if (!eth) return;
+      eth
+        .request({ method: "eth_accounts" })
+        .then((accs) => {
+          const a = (accs as string[])[0];
+          if (a) setAddress(a);
+        })
+        .catch(() => {});
+      eth
+        .request({ method: "eth_chainId" })
+        .then((c) => setChainId(c as string))
+        .catch(() => {});
 
-    const onAccounts = (...args: unknown[]) => {
-      const accs = args[0] as string[];
-      setAddress(accs?.[0] ?? null);
-    };
-    const onChain = (...args: unknown[]) => setChainId(args[0] as string);
-    eth.on?.("accountsChanged", onAccounts);
-    eth.on?.("chainChanged", onChain);
-    cleanup = () => {
-      eth.removeListener?.("accountsChanged", onAccounts);
-      eth.removeListener?.("chainChanged", onChain);
-    };
+      const onAccounts = (...args: unknown[]) => {
+        const accs = args[0] as string[];
+        setAddress(accs?.[0] ?? null);
+      };
+      const onChain = (...args: unknown[]) => setChainId(args[0] as string);
+      eth.on?.("accountsChanged", onAccounts);
+      eth.on?.("chainChanged", onChain);
+      cleanup = () => {
+        eth.removeListener?.("accountsChanged", onAccounts);
+        eth.removeListener?.("chainChanged", onChain);
+      };
     });
     return () => {
       cleanup?.();
@@ -131,7 +137,11 @@ export function useWallet() {
 
   const connect = useCallback(async () => {
     const eth = await getEthereum();
-    if (!eth) throw new Error("MetaMask only: disable Trust Wallet injection or install/unlock the MetaMask extension.");
+    if (!eth) {
+      throw new Error(
+        "MetaMask only: disable Trust Wallet injection or install/unlock the MetaMask extension.",
+      );
+    }
     setConnecting(true);
     try {
       const accs = (await eth.request({ method: "eth_requestAccounts" })) as string[];
@@ -150,7 +160,9 @@ export function useWallet() {
     const eth = await getEthereum();
     if (!eth) throw new Error("MetaMask not detected");
     await ensureGalileo(eth);
-    const provider = new BrowserProvider(eth as unknown as ConstructorParameters<typeof BrowserProvider>[0]);
+    const provider = new BrowserProvider(
+      eth as unknown as ConstructorParameters<typeof BrowserProvider>[0],
+    );
     return provider.getSigner();
   }, []);
 
