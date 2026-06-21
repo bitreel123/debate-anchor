@@ -1,15 +1,18 @@
 // 0G Galileo testnet config (https://docs.0g.ai)
 export const OG_GALILEO = {
-  chainIdHex: "0x40d9", // 16601
-  chainIdDec: 16601,
+  chainIdHex: "0x40da", // 16602
+  chainIdDec: 16602,
   chainName: "0G-Galileo-Testnet",
   rpcUrls: ["https://evmrpc-testnet.0g.ai"],
   blockExplorerUrls: ["https://chainscan-galileo.0g.ai"],
   nativeCurrency: { name: "OG", symbol: "OG", decimals: 18 },
 } as const;
 
+// Deployed VerdictRegistry on 0G Galileo (chainId 16602)
+// https://chainscan-galileo.0g.ai/address/0x498f0BAA48F5FC1EF0eBEaD0a8e866D8A45f4317
 export const VERDICT_REGISTRY_ADDRESS: string =
-  (import.meta.env.VITE_VERDICT_REGISTRY_ADDRESS as string | undefined) ?? "";
+  (import.meta.env.VITE_VERDICT_REGISTRY_ADDRESS as string | undefined) ??
+  "0x498f0BAA48F5FC1EF0eBEaD0a8e866D8A45f4317";
 
 export const VERDICT_REGISTRY_ABI = [
   "function recordDebate(bytes32 transcriptHash, string storageRoot, string topic, string winner, uint8 mode) returns (uint256)",
