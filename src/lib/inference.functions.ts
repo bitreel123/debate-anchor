@@ -8,18 +8,25 @@ const Input = z.object({
   mode: z.enum(["debate", "research"]),
 });
 
-const JUDGE_MODEL = "google/gemini-3-flash-preview";
-const AGENT_A_MODEL = "google/gemini-3-flash-preview";
-const AGENT_B_MODEL = "google/gemini-3-flash-preview";
-
 /**
- * Runs a 3-round debate (or single research synthesis) using 3 distinct
- * LLM personas. Returns a full transcript that gets hashed and anchored
- * to 0G Chain by the client.
- *
- * Compute backend: Lovable AI Gateway today; designed to be swapped for a
- * 0G Compute broker sidecar by changing only `createLovableAiGatewayProvider`.
+ * Compute backend: routed through Lovable AI Gateway today, designed to
+ * be swapped for a 0G Compute broker (Llama 3.3 70B + DeepSeek R1 70B)
+ * sidecar by only changing `createLovableAiGatewayProvider`. Each persona
+ * uses a DIFFERENT underlying model so arguments don't sound identical.
  */
+const AGENT_A_MODEL = "google/gemini-2.5-pro";        // Pro side — strong reasoning
+const AGENT_B_MODEL = "openai/gpt-5";                  // Con side — different "voice"
+const JUDGE_MODEL   = "google/gemini-3-flash-preview"; // Neutral synthesizer
+
+const DETAIL_RULES = `
+Write a DETAILED, evidence-led response (8-12 sentences, ~250-400 words).
+Include:
+  • concrete numbers, dates, version names, or named projects where possible
+  • at least one named case study or real-world example
+  • mechanism/"how it works" detail, not just claims
+  • acknowledge the strongest counter-point and rebut it
+Be sharp and specific. No filler, no hedging like "it depends".`.trim();
+
 export const runDebate = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => Input.parse(d))
   .handler(async ({ data }) => {
@@ -33,13 +40,13 @@ export const runDebate = createServerFn({ method: "POST" })
       const [a, b] = await Promise.all([
         generateText({
           model: gw(AGENT_A_MODEL),
-          system: "You are Researcher Alpha. Produce a concise, evidence-led answer to the user's question (4-6 sentences). Cite reasoning briefly.",
-          prompt: data.topic,
+          system: `You are Researcher Alpha (Gemini 2.5 Pro persona). ${DETAIL_RULES}`,
+          prompt: `Question: ${data.topic}`,
         }),
         generateText({
           model: gw(AGENT_B_MODEL),
-          system: "You are Researcher Beta. Independently produce a concise, evidence-led answer to the same question (4-6 sentences). Approach it from a different angle than a default LLM would.",
-          prompt: data.topic,
+          system: `You are Researcher Beta (GPT-5 persona). Independently answer the same question — approach it from a different angle than a default LLM would, and cross-check Alpha's likely framing. ${DETAIL_RULES}`,
+          prompt: `Question: ${data.topic}`,
         }),
       ]);
       transcript.push({ role: "A", round: 1, text: a.text });
@@ -47,7 +54,12 @@ export const runDebate = createServerFn({ method: "POST" })
 
       const judge = await generateText({
         model: gw(JUDGE_MODEL),
-        system: "You are the Judge. Synthesize the two researcher answers below into one authoritative final answer. End with a single line: 'Verdict: SYNTHESIS'.",
+        system: `You are the Judge. Synthesize both researcher answers into ONE authoritative final answer.
+Structure your output as:
+  **Reasoning:** 4-6 sentences weighing each side's strongest evidence.
+  **Case Study:** name one concrete real-world example that grounds the conclusion.
+  **Final Answer:** 3-5 sentences of definitive guidance.
+End with EXACTLY one line: "Verdict: SYNTHESIS".`,
         prompt: `QUESTION: ${data.topic}\n\nALPHA:\n${a.text}\n\nBETA:\n${b.text}`,
       });
       transcript.push({ role: "JUDGE", round: 1, text: judge.text });
@@ -60,24 +72,32 @@ export const runDebate = createServerFn({ method: "POST" })
     for (let round = 1; round <= 3; round++) {
       const a = await generateText({
         model: gw(AGENT_A_MODEL),
-        system: `You are Agent A arguing FOR the proposition. Round ${round} of 3. Be sharp, concrete, ~3 sentences. Rebut Agent B if a prior round exists.`,
-        prompt: `PROPOSITION: ${data.topic}\n\nPRIOR EXCHANGE:\n${history || "(none yet — opening statement)"}`,
+        system: `You are Agent A arguing FOR the proposition. Round ${round} of 3. ${DETAIL_RULES} ${
+          round > 1 ? "Directly rebut Agent B's latest point before advancing your own." : "This is your opening statement."
+        }`,
+        prompt: `PROPOSITION: ${data.topic}\n\nPRIOR EXCHANGE:\n${history || "(none yet)"}`,
       });
       transcript.push({ role: "A", round, text: a.text });
-      history += `\n[A r${round}] ${a.text}`;
+      history += `\n\n[A r${round}] ${a.text}`;
 
       const b = await generateText({
         model: gw(AGENT_B_MODEL),
-        system: `You are Agent B arguing AGAINST the proposition. Round ${round} of 3. Be sharp, concrete, ~3 sentences. Rebut Agent A's latest point.`,
+        system: `You are Agent B arguing AGAINST the proposition. Round ${round} of 3. ${DETAIL_RULES} Directly rebut Agent A's latest point with specifics.`,
         prompt: `PROPOSITION: ${data.topic}\n\nPRIOR EXCHANGE:\n${history}`,
       });
       transcript.push({ role: "B", round, text: b.text });
-      history += `\n[B r${round}] ${b.text}`;
+      history += `\n\n[B r${round}] ${b.text}`;
     }
 
     const judge = await generateText({
       model: gw(JUDGE_MODEL),
-      system: "You are the Judge. Read the 3-round exchange and rule which side argued more convincingly. Respond in 4-6 sentences, then END with exactly one line: 'Verdict: A' or 'Verdict: B' or 'Verdict: TIE'.",
+      system: `You are the Judge. Read the full 3-round exchange and rule.
+Structure your ruling EXACTLY as:
+  **Reasoning:** 4-6 sentences explaining WHY the winning side argued better — cite specific points from the transcript.
+  **How / Mechanism:** 2-3 sentences on the underlying mechanism that settled the question.
+  **Case Study:** name one concrete real-world example that supports the ruling.
+  **Ruling:** 2-3 sentences of definitive judgment.
+End with EXACTLY one line: "Verdict: A" or "Verdict: B" or "Verdict: TIE".`,
       prompt: `PROPOSITION: ${data.topic}\n\nTRANSCRIPT:${history}`,
     });
     transcript.push({ role: "JUDGE", round: 4, text: judge.text });
