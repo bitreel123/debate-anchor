@@ -1,4 +1,6 @@
 import judgeHero from "@/assets/judge-hero.png";
+import { Link } from "@tanstack/react-router";
+import { ArrowUpRight } from "lucide-react";
 
 export function Hero() {
   return (
@@ -19,6 +21,15 @@ export function Hero() {
             <span className="text-sm font-semibold opacity-60">Modes</span>
             <span className="font-display font-bold text-lg">Debate · Research</span>
           </div>
+          <div className="pt-4">
+            <Link
+              to="/dashboard"
+              className="inline-flex items-center gap-2 rounded-full bg-ink text-paper px-7 py-3.5 font-display font-bold text-base shadow-lg hover:scale-[1.03] active:scale-95 transition-transform"
+            >
+              Launch App
+              <ArrowUpRight className="w-4 h-4" />
+            </Link>
+          </div>
         </div>
       </div>
       <div className="relative">
@@ -34,3 +45,4 @@ export function Hero() {
     </section>
   );
 }
+
