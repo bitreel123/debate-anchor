@@ -8,6 +8,7 @@ import courtroom from "@/assets/courtroom-bg.jpg";
 import judgeImg from "@/assets/judge-cartoon.png";
 import agentAImg from "@/assets/agent-a-cartoon.png";
 import agentBImg from "@/assets/agent-b-cartoon.png";
+import ogFlag from "@/assets/og-flag.png";
 import { useWallet } from "@/lib/wallet";
 import { runDebate } from "@/lib/inference.functions";
 import { pinTranscript } from "@/lib/storage.functions";
@@ -149,22 +150,26 @@ function Dashboard() {
         <img src={courtroom} alt="Cartoon American courtroom" className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-paper/95 pointer-events-none" />
 
+        {/* 0G Flag — courtroom emblem */}
+        <img src={ogFlag} alt="0G Labs flag" width={512} height={768} loading="lazy"
+          className="absolute right-[40%] top-[8%] w-[70px] md:w-[90px] drop-shadow-xl pointer-events-none z-[5]" />
+
         {/* Judge */}
-        <Character src={judgeImg} alt="Judge" label="Judge"
+        <Character src={judgeImg} alt="Judge" label={`Judge · ${AGENT_LABELS.judge}`}
           className="left-1/2 top-[18%] -translate-x-1/2 w-[180px] sm:w-[220px] md:w-[240px]"
           bubble={lastLine(transcript, "JUDGE") ?? welcome}
           active={speaking === "judge"} color="bg-white" pos="top" />
 
         {/* Agent A */}
-        <Character src={agentAImg} alt="Agent A" label="Agent A · Pro"
+        <Character src={agentAImg} alt="Agent A" label={`Agent A · Pro · ${AGENT_LABELS.a}`}
           className="left-[6%] md:left-[10%] bottom-[24%] w-[140px] sm:w-[170px] md:w-[190px]"
-          bubble={lastLine(transcript, "A") ?? "Ready to argue the affirmative."}
+          bubble={lastLine(transcript, "A") ?? "Ready to argue the affirmative — submit a topic."}
           active={speaking === "a"} color="bg-accent-orange" pos="top" />
 
         {/* Agent B */}
-        <Character src={agentBImg} alt="Agent B" label="Agent B · Con"
+        <Character src={agentBImg} alt="Agent B" label={`Agent B · Con · ${AGENT_LABELS.b}`}
           className="right-[6%] md:right-[10%] bottom-[24%] w-[140px] sm:w-[170px] md:w-[190px]"
-          bubble={lastLine(transcript, "B") ?? "Ready to argue the opposition."}
+          bubble={lastLine(transcript, "B") ?? "Ready to argue the opposition — submit a topic."}
           active={speaking === "b"} color="bg-accent-blue" textPaper pos="top" />
 
 
@@ -227,6 +232,12 @@ function StatusRow({ ok, label, detail }: { ok: boolean; label: string; detail: 
   );
 }
 
+const AGENT_LABELS = {
+  a: "Gemini 2.5 Pro",
+  b: "GPT-5",
+  judge: "Gemini 3 Flash",
+} as const;
+
 function Character({ src, alt, label, className, bubble, active, color, textPaper, pos }: {
   src: string; alt: string; label: string; className: string; bubble: string;
   active: boolean; color: string; textPaper?: boolean; pos: "top" | "left" | "right";
@@ -235,10 +246,14 @@ function Character({ src, alt, label, className, bubble, active, color, textPape
            : pos === "left" ? "right-full mr-3 top-2" : "left-full ml-3 top-2";
   return (
     <div className={`absolute ${className}`}>
-      <div className={`absolute ${bp} w-[220px] sm:w-[260px] transition-all duration-300 ${active ? "opacity-100 scale-100" : "opacity-90 scale-95"}`}>
+      <div className={`absolute ${bp} w-[260px] sm:w-[320px] md:w-[360px] transition-all duration-300 ${active ? "opacity-100 scale-100" : "opacity-95 scale-[0.97]"}`}>
         <div className={`${color} ${textPaper ? "text-paper" : "text-ink"} rounded-2xl px-4 py-3 border-2 border-ink shadow-[4px_4px_0_var(--ink)]`}>
-          <div className={`text-[10px] font-mono uppercase mb-1 ${textPaper ? "text-paper/70" : "text-ink/50"}`}>{label}</div>
-          <p className="font-medium text-sm leading-snug line-clamp-5">{bubble}</p>
+          <div className={`text-[10px] font-mono uppercase mb-1 flex items-center justify-between gap-2 ${textPaper ? "text-paper/70" : "text-ink/50"}`}>
+            <span className="truncate">{label}</span>
+          </div>
+          <div className="max-h-[260px] overflow-y-auto pr-1 nice-scroll">
+            <p className="font-medium text-sm leading-snug whitespace-pre-wrap">{bubble}</p>
+          </div>
         </div>
       </div>
       <img src={src} alt={alt} className={`w-full h-auto drop-shadow-2xl pointer-events-none ${active ? "animate-bounce-slow" : ""}`} />
