@@ -6,11 +6,31 @@ type Eth = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
   on?: (event: string, cb: (...a: unknown[]) => void) => void;
   removeListener?: (event: string, cb: (...a: unknown[]) => void) => void;
+  isMetaMask?: boolean;
+  isTrust?: boolean;
+  isCoinbaseWallet?: boolean;
+  isPhantom?: boolean;
+  providers?: Eth[];
 };
+
+// Pick MetaMask specifically when multiple wallets inject window.ethereum.
+// Trust/Coinbase/Phantom often hijack window.ethereum; EIP-5749/legacy `providers`
+// array lets us pick the real MetaMask provider.
+function pickMetaMask(eth: Eth): Eth | null {
+  const isRealMM = (p: Eth) => !!p?.isMetaMask && !p.isTrust && !p.isCoinbaseWallet && !p.isPhantom;
+  if (eth.providers && Array.isArray(eth.providers)) {
+    const mm = eth.providers.find(isRealMM);
+    if (mm) return mm;
+  }
+  if (isRealMM(eth)) return eth;
+  return null;
+}
 
 function getEthereum(): Eth | null {
   if (typeof window === "undefined") return null;
-  return (window as unknown as { ethereum?: Eth }).ethereum ?? null;
+  const root = (window as unknown as { ethereum?: Eth }).ethereum ?? null;
+  if (!root) return null;
+  return pickMetaMask(root) ?? root;
 }
 
 export async function ensureGalileo(eth: Eth) {
