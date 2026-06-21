@@ -15,7 +15,7 @@ module.exports = {
   networks: {
     galileo: {
       url: "https://evmrpc-testnet.0g.ai",
-      chainId: 16601,
+      chainId: 16602,
       accounts: process.env.DEPLOYER_PRIVATE_KEY
         ? [process.env.DEPLOYER_PRIVATE_KEY]
         : [],
