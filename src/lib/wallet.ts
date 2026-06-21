@@ -23,13 +23,7 @@ type Eip6963Provider = {
 // Trust/Coinbase/Phantom often hijack window.ethereum; EIP-5749/legacy `providers`
 // array lets us pick the real MetaMask provider.
 function isRealMetaMask(p?: Eth | null) {
-  return (
-    !!p?.isMetaMask &&
-    !!p._metamask &&
-    !p.isTrust &&
-    !p.isCoinbaseWallet &&
-    !p.isPhantom
-  );
+  return !!p?.isMetaMask && !!p._metamask && !p.isTrust && !p.isCoinbaseWallet && !p.isPhantom;
 }
 
 function pickMetaMask(eth: Eth): Eth | null {
@@ -59,9 +53,7 @@ async function getEthereum(): Promise<Eth | null> {
   win.removeEventListener("eip6963:announceProvider", onAnnounce as EventListener);
 
   const eip6963MetaMask = announced.find(
-    (entry) =>
-      entry.info?.rdns === "io.metamask" ||
-      entry.info?.name?.toLowerCase() === "metamask",
+    (entry) => entry.info?.rdns === "io.metamask" || entry.info?.name?.toLowerCase() === "metamask",
   )?.provider;
   if (eip6963MetaMask) return eip6963MetaMask;
 
