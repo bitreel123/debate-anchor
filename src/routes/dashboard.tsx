@@ -151,7 +151,7 @@ function Dashboard() {
 
         {/* Judge */}
         <Character src={judgeImg} alt="Judge" label="Judge"
-          className="left-1/2 top-[12%] -translate-x-1/2 w-[180px] sm:w-[220px] md:w-[240px]"
+          className="left-1/2 top-[18%] -translate-x-1/2 w-[180px] sm:w-[220px] md:w-[240px]"
           bubble={lastLine(transcript, "JUDGE") ?? welcome}
           active={speaking === "judge"} color="bg-white" pos="top" />
 
@@ -159,46 +159,14 @@ function Dashboard() {
         <Character src={agentAImg} alt="Agent A" label="Agent A · Pro"
           className="left-[6%] md:left-[10%] bottom-[24%] w-[140px] sm:w-[170px] md:w-[190px]"
           bubble={lastLine(transcript, "A") ?? "Ready to argue the affirmative."}
-          active={speaking === "a"} color="bg-accent-orange" pos="right" />
+          active={speaking === "a"} color="bg-accent-orange" pos="top" />
 
         {/* Agent B */}
         <Character src={agentBImg} alt="Agent B" label="Agent B · Con"
           className="right-[6%] md:right-[10%] bottom-[24%] w-[140px] sm:w-[170px] md:w-[190px]"
           bubble={lastLine(transcript, "B") ?? "Ready to argue the opposition."}
-          active={speaking === "b"} color="bg-accent-blue" textPaper pos="left" />
+          active={speaking === "b"} color="bg-accent-blue" textPaper pos="top" />
 
-        {/* 0G status rail */}
-        <aside className="absolute top-4 right-4 hidden lg:block w-72 z-20">
-          <div className="bg-white/95 backdrop-blur rounded-2xl border-2 border-ink p-4 shadow-[4px_4px_0_var(--ink)]">
-            <div className="flex items-center gap-2 mb-3">
-              <History className="size-4" /><span className="font-display font-bold text-sm">0G Stack</span>
-            </div>
-            <ul className="space-y-2 text-xs">
-              <StatusRow ok={!!wallet.address && wallet.isGalileo} label="Wallet · Galileo testnet"
-                detail={wallet.address ? short(wallet.address) : "Not connected"} />
-              <StatusRow ok={stage === "anchored" || stage === "ready-to-anchor" || stage === "anchoring"}
-                label="0G Compute · 3 agents" detail="Inference via gateway" />
-              <StatusRow ok={!!storage} label="0G Storage · transcript pinned"
-                detail={storage ? `${storage.backend}` : "—"} />
-              <StatusRow ok={!!anchor} label="0G Chain · VerdictRegistry"
-                detail={VERDICT_REGISTRY_ADDRESS ? short(VERDICT_REGISTRY_ADDRESS) : "Deploy contract"} />
-            </ul>
-            {storage && (
-              <div className="mt-3 pt-3 border-t border-ink/10">
-                <div className="text-[10px] font-mono text-ink/50 mb-1">STORAGE ROOT</div>
-                <div className="text-[10px] font-mono break-all">{storage.root}</div>
-              </div>
-            )}
-            {anchor && (
-              <div className="mt-3 pt-3 border-t border-ink/10">
-                <div className="text-[10px] font-mono text-ink/50 mb-1">TX HASH</div>
-                <a href={anchor.explorerUrl} target="_blank" rel="noreferrer" className="text-[10px] font-mono break-all underline flex items-start gap-1">
-                  {anchor.txHash} <ExternalLink className="size-3 shrink-0" />
-                </a>
-              </div>
-            )}
-          </div>
-        </aside>
 
         {/* Composer */}
         <div className="absolute inset-x-0 bottom-0 p-4 md:p-6 z-10">
