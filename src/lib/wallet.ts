@@ -23,7 +23,13 @@ type Eip6963Provider = {
 // Trust/Coinbase/Phantom often hijack window.ethereum; EIP-5749/legacy `providers`
 // array lets us pick the real MetaMask provider.
 function isRealMetaMask(p?: Eth | null) {
-  return !!p?.isMetaMask && !!p._metamask && !p.isTrust && !p.isCoinbaseWallet && !p.isPhantom;
+  return (
+    !!p?.isMetaMask &&
+    !!p._metamask &&
+    !p.isTrust &&
+    !p.isCoinbaseWallet &&
+    !p.isPhantom
+  );
 }
 
 function pickMetaMask(eth: Eth): Eth | null {
@@ -45,14 +51,17 @@ async function getEthereum(): Promise<Eth | null> {
   };
 
   const announced: Eip6963Provider[] = [];
-  const onAnnounce = (event: Event) => announced.push((event as CustomEvent<Eip6963Provider>).detail);
+  const onAnnounce = (event: Event) =>
+    announced.push((event as CustomEvent<Eip6963Provider>).detail);
   win.addEventListener("eip6963:announceProvider", onAnnounce as EventListener);
   win.dispatchEvent(new Event("eip6963:requestProvider"));
   await new Promise((resolve) => setTimeout(resolve, 120));
   win.removeEventListener("eip6963:announceProvider", onAnnounce as EventListener);
 
-  const eip6963MetaMask = announced.find((entry) =>
-    entry.info?.rdns === "io.metamask" || entry.info?.name?.toLowerCase() === "metamask"
+  const eip6963MetaMask = announced.find(
+    (entry) =>
+      entry.info?.rdns === "io.metamask" ||
+      entry.info?.name?.toLowerCase() === "metamask",
   )?.provider;
   if (eip6963MetaMask) return eip6963MetaMask;
 
@@ -72,13 +81,15 @@ export async function ensureGalileo(eth: Eth) {
     if (code === 4902 || code === -32603) {
       await eth.request({
         method: "wallet_addEthereumChain",
-        params: [{
-          chainId: OG_GALILEO.chainIdHex,
-          chainName: OG_GALILEO.chainName,
-          rpcUrls: [...OG_GALILEO.rpcUrls],
-          blockExplorerUrls: [...OG_GALILEO.blockExplorerUrls],
-          nativeCurrency: OG_GALILEO.nativeCurrency,
-        }],
+        params: [
+          {
+            chainId: OG_GALILEO.chainIdHex,
+            chainName: OG_GALILEO.chainName,
+            rpcUrls: [...OG_GALILEO.rpcUrls],
+            blockExplorerUrls: [...OG_GALILEO.blockExplorerUrls],
+            nativeCurrency: OG_GALILEO.nativeCurrency,
+          },
+        ],
       });
     } else {
       throw err;
