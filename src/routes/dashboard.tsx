@@ -201,6 +201,17 @@ function Dashboard() {
                 </button>
               )}
             </div>
+            {storage && (
+              <p className="mt-2 text-[11px] text-ink/70 font-mono break-all">
+                📦 <b>0G Storage root:</b> <code className="bg-ink/10 px-1 rounded">{storage.root}</code> · backend <code className="bg-ink/10 px-1 rounded">{storage.backend}</code>
+                <br />Retrieve anytime via <code className="bg-ink/10 px-1 rounded">GET https://indexer-storage-testnet-turbo.0g.ai/file?root={storage.root.startsWith("og://") ? "<sha256>" : storage.root}</code>
+              </p>
+            )}
+            {anchor && (
+              <p className="mt-1 text-[11px] text-ink/70 font-mono break-all">
+                ⛓ <b>Anchored:</b> <a className="underline" href={anchor.explorerUrl} target="_blank" rel="noreferrer">{anchor.txHash.slice(0,10)}…</a> · hash <code className="bg-ink/10 px-1 rounded">{anchor.transcriptHash.slice(0,18)}…</code>
+              </p>
+            )}
             {!VERDICT_REGISTRY_ADDRESS && (
               <p className="mt-2 text-[11px] text-ink/60 font-mono flex items-center gap-1">
                 <AlertCircle className="size-3" />
