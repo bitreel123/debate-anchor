@@ -244,9 +244,9 @@ function StatusRow({ ok, label, detail }: { ok: boolean; label: string; detail: 
 }
 
 const AGENT_LABELS = {
-  a: "Gemini 2.5 Pro",
-  b: "GPT-5",
-  judge: "Gemini 3 Flash",
+  a: "Llama 3.3 70B · 0G Compute",
+  b: "DeepSeek R1 70B · 0G Compute",
+  judge: "Llama 3.3 70B · 0G Compute",
 } as const;
 
 function Character({ src, alt, label, className, bubble, active, color, textPaper, pos }: {
