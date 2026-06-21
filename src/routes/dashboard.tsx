@@ -203,13 +203,10 @@ function Dashboard() {
         {/* Composer */}
         <div className="absolute inset-x-0 bottom-0 p-4 md:p-6 z-10">
           <form onSubmit={handleSubmit} className="max-w-3xl mx-auto bg-white rounded-3xl border-2 border-ink shadow-[6px_6px_0_var(--ink)] p-4">
-            <div className="flex items-center justify-between gap-2 mb-3">
-              <div className="flex items-center gap-2 text-xs text-ink/60 font-mono">
-                <Sparkles className="size-3.5" />
-                <span>{mode === "debate" ? "3 rounds · 2 agents · 1 judge" : "Two researchers · judge synthesis"}</span>
-              </div>
+            <div className="flex items-center justify-end gap-2 mb-3">
               {winner && <span className="text-xs font-mono px-2 py-1 rounded-full bg-accent-lemon border border-ink">Verdict: {winner}</span>}
             </div>
+
             <div className="flex items-end gap-3">
               <textarea value={prompt} onChange={e => setPrompt(e.target.value)} disabled={stage === "thinking"}
                 placeholder={mode === "debate" ? "Should AI agents be allowed to own property?" : "What does recent research say about…?"}
