@@ -150,9 +150,9 @@ function Dashboard() {
         <img src={courtroom} alt="Cartoon American courtroom" className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-paper/95 pointer-events-none" />
 
-        {/* 0G Flag — courtroom emblem */}
+        {/* 0G Flag — courtroom emblem, beside the judge */}
         <img src={ogFlag} alt="0G Labs flag" width={512} height={768} loading="lazy"
-          className="absolute right-[40%] top-[8%] w-[70px] md:w-[90px] drop-shadow-xl pointer-events-none z-[5]" />
+          className="absolute left-[63%] top-[14%] w-[70px] md:w-[88px] drop-shadow-xl pointer-events-none z-[6] -rotate-6" />
 
         {/* Judge */}
         <Character src={judgeImg} alt="Judge" label={`Judge · ${AGENT_LABELS.judge}`}
