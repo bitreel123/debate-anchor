@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Wallet, Gavel, ArrowLeft, History, Send, Sparkles, Scale, ExternalLink, Loader2, CheckCircle2, Circle, AlertCircle } from "lucide-react";
+import { Wallet, Gavel, ArrowLeft, History, Send, Scale, Loader2, CheckCircle2, Circle, AlertCircle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import courtroom from "@/assets/courtroom-bg.jpg";
@@ -27,8 +27,40 @@ export const Route = createFileRoute("/dashboard")({
 
 type Line = { role: "A" | "B" | "JUDGE"; round: number; text: string };
 type Stage = "idle" | "thinking" | "ready-to-anchor" | "anchoring" | "anchored";
+type DebateHistoryEntry = {
+  id: string;
+  topic: string;
+  mode: "debate" | "research";
+  createdAt: number;
+  transcript: Line[];
+  winner: string;
+  storage?: { root: string; backend: string } | null;
+  anchor?: { txHash: string; explorerUrl: string; transcriptHash: string } | null;
+};
+
+const HISTORY_KEY = "og-verdict-history-v1";
 
 function short(a?: string | null) { return a ? `${a.slice(0, 6)}…${a.slice(-4)}` : ""; }
+
+function loadDebateHistory(): DebateHistoryEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(HISTORY_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistDebateHistory(items: DebateHistoryEntry[]) {
+  const next = items.slice(0, 40);
+  if (typeof window !== "undefined") window.localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+  return next;
+}
+
+function createHistoryId() {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 function Dashboard() {
   const wallet = useWallet();
@@ -36,6 +68,7 @@ function Dashboard() {
   const pinTranscriptFn = useServerFn(pinTranscript);
 
   const [mode, setMode] = useState<"debate" | "research">("debate");
+  const [activePanel, setActivePanel] = useState<"court" | "history">("court");
   const [prompt, setPrompt] = useState("");
   const [stage, setStage] = useState<Stage>("idle");
   const [transcript, setTranscript] = useState<Line[]>([]);
@@ -44,6 +77,8 @@ function Dashboard() {
   const [welcome, setWelcome] = useState("Welcome to OG Verdict Court. Submit a topic and I'll convene the agents.");
   const [storage, setStorage] = useState<{ root: string; backend: string } | null>(null);
   const [anchor, setAnchor] = useState<{ txHash: string; explorerUrl: string; transcriptHash: string } | null>(null);
+  const [history, setHistory] = useState<DebateHistoryEntry[]>(() => loadDebateHistory());
+  const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
 
   const onConnect = async () => {
     try {
@@ -58,13 +93,17 @@ function Dashboard() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prompt.trim()) { toast("Enter a topic first"); return; }
+    const topic = prompt.trim();
+    const historyId = createHistoryId();
+    setActivePanel("court");
     setStage("thinking");
     setTranscript([]); setWinner(""); setStorage(null); setAnchor(null);
+    setCurrentHistoryId(null);
     setWelcome(mode === "debate" ? "Court is in session. Three rounds." : "Researchers — investigate.");
     setSpeaking("judge");
 
     try {
-      const result = await runDebateFn({ data: { topic: prompt, mode } });
+      const result = await runDebateFn({ data: { topic, mode } });
       setTranscript(result.transcript);
       setWinner(result.winner);
 
@@ -76,8 +115,11 @@ function Dashboard() {
       });
 
       // Pin to 0G Storage
-      const pin = await pinTranscriptFn({ data: { transcript: result.transcript, topic: prompt } });
-      setStorage({ root: pin.storageRoot, backend: pin.backend });
+      const pin = await pinTranscriptFn({ data: { transcript: result.transcript, topic } });
+      const storageRef = { root: pin.storageRoot, backend: pin.backend };
+      setStorage(storageRef);
+      setCurrentHistoryId(historyId);
+      setHistory(prev => persistDebateHistory([{ id: historyId, topic, mode, createdAt: Date.now(), transcript: result.transcript, winner: result.winner, storage: storageRef, anchor: null }, ...prev]));
       setStage("ready-to-anchor");
       toast.success("Debate complete. Anchor to 0G Chain to finalize.");
     } catch (err) {
@@ -100,13 +142,39 @@ function Dashboard() {
       const res = await anchorDebate(signer, {
         transcript, storageRoot: storage.root, topic: prompt, winner, mode,
       });
-      setAnchor({ txHash: res.txHash, explorerUrl: res.explorerUrl, transcriptHash: res.transcriptHash });
+      const anchorRef = { txHash: res.txHash, explorerUrl: res.explorerUrl, transcriptHash: res.transcriptHash };
+      setAnchor(anchorRef);
+      setHistory(prev => persistDebateHistory(prev.map(item => item.id === currentHistoryId ? { ...item, anchor: anchorRef } : item)));
       setStage("anchored");
       toast.success("Anchored to 0G Chain ✓");
     } catch (e) {
       toast.error((e as Error).message || "Tx failed");
       setStage("ready-to-anchor");
     }
+  };
+
+  const restoreHistory = (item: DebateHistoryEntry) => {
+    setActivePanel("court");
+    setMode(item.mode);
+    setPrompt(item.topic);
+    setTranscript(item.transcript);
+    setWinner(item.winner);
+    setStorage(item.storage ?? null);
+    setAnchor(item.anchor ?? null);
+    setCurrentHistoryId(item.id);
+    setStage(item.anchor ? "anchored" : item.storage ? "ready-to-anchor" : "idle");
+    setSpeaking("judge");
+    setWelcome("Loaded from history.");
+  };
+
+  const deleteHistory = (id: string) => {
+    setHistory(prev => persistDebateHistory(prev.filter(item => item.id !== id)));
+    toast("Removed from history");
+  };
+
+  const clearHistory = () => {
+    setHistory(persistDebateHistory([]));
+    toast("History cleared");
   };
 
   return (
@@ -128,11 +196,16 @@ function Dashboard() {
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 bg-white rounded-2xl p-1 border border-ink/10 shadow-sm">
             {(["debate", "research"] as const).map(m => (
-              <button key={m} type="button" onClick={() => setMode(m)}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold capitalize transition ${mode === m ? "bg-ink text-paper" : "text-ink/70 hover:text-ink"}`}>
+              <button key={m} type="button" onClick={() => { setMode(m); setActivePanel("court"); }}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold capitalize transition ${activePanel === "court" && mode === m ? "bg-ink text-paper" : "text-ink/70 hover:text-ink"}`}>
                 {m}
               </button>
             ))}
+            <button type="button" onClick={() => setActivePanel("history")}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-1.5 ${activePanel === "history" ? "bg-ink text-paper" : "text-ink/70 hover:text-ink"}`}>
+              <History className="size-4" />
+              History
+            </button>
           </div>
 
           <button onClick={onConnect} disabled={wallet.connecting}
@@ -149,6 +222,9 @@ function Dashboard() {
       <section className="relative flex-1 mx-3 mb-3 rounded-3xl overflow-hidden border-2 border-ink shadow-[6px_6px_0_var(--ink)] bg-[#3a2410] min-h-[560px]">
         <img src={courtroom} alt="Cartoon American courtroom" className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-paper/95 pointer-events-none" />
+
+        {activePanel === "court" ? (
+          <>
 
         {/* 0G Flag — courtroom emblem, beside the judge */}
         <img src={ogFlag} alt="0G Labs flag" width={512} height={768} loading="lazy"
@@ -220,6 +296,10 @@ function Dashboard() {
             )}
           </form>
         </div>
+          </>
+        ) : (
+          <HistoryPanel items={history} onRestore={restoreHistory} onDelete={deleteHistory} onClear={clearHistory} />
+        )}
       </section>
     </main>
   );
@@ -240,6 +320,67 @@ function StatusRow({ ok, label, detail }: { ok: boolean; label: string; detail: 
         <div className="text-ink/50 font-mono truncate">{detail}</div>
       </div>
     </li>
+  );
+}
+
+function HistoryPanel({ items, onRestore, onDelete, onClear }: {
+  items: DebateHistoryEntry[];
+  onRestore: (item: DebateHistoryEntry) => void;
+  onDelete: (id: string) => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="absolute inset-0 z-10 p-4 md:p-6">
+      <div className="mx-auto flex h-full max-w-5xl flex-col rounded-3xl border-2 border-ink bg-paper/95 p-4 shadow-[6px_6px_0_var(--ink)] backdrop-blur-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b-2 border-ink/10 pb-3">
+          <div>
+            <h2 className="font-display text-2xl font-black">History</h2>
+            <p className="text-sm text-ink/60">{items.length ? `${items.length} saved prompt${items.length === 1 ? "" : "s"}` : "No saved prompts yet"}</p>
+          </div>
+          {items.length > 0 && (
+            <button type="button" onClick={onClear} className="flex items-center gap-2 rounded-2xl border-2 border-ink bg-white px-4 py-2 text-sm font-semibold shadow-[3px_3px_0_var(--ink)] transition hover:scale-[1.02]">
+              <Trash2 className="size-4" />
+              Clear
+            </button>
+          )}
+        </div>
+        {items.length === 0 ? (
+          <div className="grid flex-1 place-items-center text-center">
+            <div className="max-w-sm">
+              <History className="mx-auto mb-3 size-10 text-ink/35" />
+              <p className="font-semibold">Completed debates and research runs will appear here.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid flex-1 gap-3 overflow-y-auto pr-1 md:grid-cols-2 nice-scroll">
+            {items.map(item => (
+              <article key={item.id} className="flex min-h-[180px] flex-col rounded-2xl border-2 border-ink bg-white p-4 shadow-[4px_4px_0_var(--ink)]">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-ink bg-accent-lemon px-2 py-0.5 text-[10px] font-mono uppercase">{item.mode}</span>
+                      {item.winner && <span className="rounded-full bg-ink px-2 py-0.5 text-[10px] font-mono uppercase text-paper">Verdict {item.winner}</span>}
+                    </div>
+                    <h3 className="line-clamp-2 font-display text-lg font-black leading-tight">{item.topic}</h3>
+                    <time className="text-xs text-ink/50">{new Date(item.createdAt).toLocaleString()}</time>
+                  </div>
+                  <button type="button" aria-label="Delete history item" onClick={() => onDelete(item.id)} className="rounded-xl border border-ink/15 p-2 text-ink/55 transition hover:bg-ink/5 hover:text-ink">
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
+                <p className="line-clamp-3 flex-1 whitespace-pre-wrap text-sm leading-snug text-ink/70">{lastLine(item.transcript, "JUDGE") ?? item.transcript[0]?.text ?? "Saved run"}</p>
+                <div className="mt-4 flex items-center justify-between gap-2 text-xs text-ink/55">
+                  <span>{item.transcript.length} messages{item.anchor ? " · anchored" : item.storage ? " · stored" : ""}</span>
+                  <button type="button" onClick={() => onRestore(item)} className="rounded-xl border-2 border-ink bg-accent-mint px-3 py-2 font-semibold text-ink shadow-[2px_2px_0_var(--ink)] transition hover:scale-[1.03]">
+                    Open
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
