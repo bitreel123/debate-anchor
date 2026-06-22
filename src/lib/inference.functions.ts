@@ -68,7 +68,13 @@ export const topUpSidecarLedger = createServerFn({ method: "POST" })
       const t = await r.text().catch(() => "");
       throw new Error(`0G sidecar top-up ${r.status}: ${t.slice(0, 240)}`);
     }
-    return r.json() as Promise<{ ok: boolean; wallet: string; status: string; ledger?: unknown }>;
+    const json = (await r.json()) as { ok?: unknown; wallet?: unknown; status?: unknown; ledger?: unknown };
+    return {
+      ok: Boolean(json.ok),
+      wallet: String(json.wallet || ""),
+      status: String(json.status || "unknown"),
+      ledger: json.ledger ? JSON.stringify(json.ledger) : undefined,
+    };
   });
 
 export const runDebate = createServerFn({ method: "POST" })
