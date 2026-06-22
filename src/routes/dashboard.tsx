@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Wallet, Gavel, ArrowLeft, History, Send, Scale, Loader2, CheckCircle2, Circle, AlertCircle, Trash2 } from "lucide-react";
+import { Wallet, Gavel, ArrowLeft, History, Send, Scale, Loader2, CheckCircle2, Circle, AlertCircle, Trash2, Coins } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import courtroom from "@/assets/courtroom-bg.jpg";
@@ -10,7 +10,7 @@ import agentAImg from "@/assets/agent-a-cartoon.png";
 import agentBImg from "@/assets/agent-b-cartoon.png";
 import ogFlag from "@/assets/og-flag.png";
 import { useWallet } from "@/lib/wallet";
-import { runDebate } from "@/lib/inference.functions";
+import { runDebate, topUpSidecarLedger } from "@/lib/inference.functions";
 import { pinTranscript } from "@/lib/storage.functions";
 import { anchorDebate } from "@/lib/registry";
 import { OG_GALILEO, VERDICT_REGISTRY_ADDRESS } from "@/lib/og-chain";
@@ -65,6 +65,7 @@ function createHistoryId() {
 function Dashboard() {
   const wallet = useWallet();
   const runDebateFn = useServerFn(runDebate);
+  const topUpSidecarLedgerFn = useServerFn(topUpSidecarLedger);
   const pinTranscriptFn = useServerFn(pinTranscript);
 
   const [mode, setMode] = useState<"debate" | "research">("debate");
@@ -79,6 +80,7 @@ function Dashboard() {
   const [anchor, setAnchor] = useState<{ txHash: string; explorerUrl: string; transcriptHash: string } | null>(null);
   const [history, setHistory] = useState<DebateHistoryEntry[]>(() => loadDebateHistory());
   const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
+  const [toppingUp, setToppingUp] = useState(false);
 
   const onConnect = async () => {
     try {
@@ -177,6 +179,18 @@ function Dashboard() {
     toast("History cleared");
   };
 
+  const handleCreateLedger = async () => {
+    setToppingUp(true);
+    try {
+      const result = await topUpSidecarLedgerFn({ data: { amount: "0.05" } });
+      toast.success(result.status === "created" ? "0G Compute ledger created" : "0G Compute ledger already exists");
+    } catch (e) {
+      toast.error((e as Error).message || "Could not create 0G Compute ledger");
+    } finally {
+      setToppingUp(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-paper text-ink flex flex-col">
       <Toaster position="top-center" />
@@ -254,6 +268,11 @@ function Dashboard() {
           <form onSubmit={handleSubmit} className="max-w-3xl mx-auto bg-white rounded-3xl border-2 border-ink shadow-[6px_6px_0_var(--ink)] p-4">
             <div className="flex items-center justify-end gap-2 mb-3">
               {winner && <span className="text-xs font-mono px-2 py-1 rounded-full bg-accent-lemon border border-ink">Verdict: {winner}</span>}
+              <button type="button" onClick={handleCreateLedger} disabled={toppingUp || stage === "thinking"}
+                className="rounded-xl border border-ink/20 bg-ink/5 px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 transition hover:bg-ink/10 disabled:opacity-60">
+                {toppingUp ? <Loader2 className="size-3.5 animate-spin" /> : <Coins className="size-3.5" />}
+                Fix 0G Ledger
+              </button>
             </div>
 
             <div className="flex items-end gap-3">
