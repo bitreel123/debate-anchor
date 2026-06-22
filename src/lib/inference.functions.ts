@@ -50,6 +50,27 @@ async function callOG(opts: { sidecar: string; secret: string; model: string; sy
   return j;
 }
 
+export const topUpSidecarLedger = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => z.object({ amount: z.string().default("0.05") }).parse(d ?? {}))
+  .handler(async ({ data }) => {
+    const sidecar = process.env.OG_COMPUTE_SIDECAR_URL;
+    const secret = process.env.OG_COMPUTE_SIDECAR_SECRET;
+    if (!sidecar || !secret) throw new Error("0G sidecar URL/secret is not configured");
+
+    const cleanSecret = normalizeSidecarSecret(secret);
+    const r = await fetch(`${sidecar.replace(/\/$/, "")}/topup`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${cleanSecret}`, "x-sidecar-secret": cleanSecret },
+      body: JSON.stringify({ amount: data.amount }),
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (!r.ok) {
+      const t = await r.text().catch(() => "");
+      throw new Error(`0G sidecar top-up ${r.status}: ${t.slice(0, 240)}`);
+    }
+    return r.json() as Promise<{ ok: boolean; wallet: string; status: string; ledger?: unknown }>;
+  });
+
 export const runDebate = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => Input.parse(d))
   .handler(async ({ data }) => {
