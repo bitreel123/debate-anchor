@@ -102,7 +102,7 @@ app.get("/health", (_req, res) => {
 
 // POST /topup { amount?: "0.05" } creates the broker ledger without Render Shell.
 app.post("/topup", async (req, res) => {
-  const amount = String(req.body?.amount || AUTO_TOPUP_AMOUNT);
+  const amount = Number(req.body?.amount ?? AUTO_TOPUP_AMOUNT);
   try {
     const result = await ensureLedger(amount);
     res.json({ ok: true, wallet: wallet.address, ...result });
