@@ -18,6 +18,7 @@
 //   PORT                — defaults to 8787
 //   SIDECAR_SECRET      — shared bearer the Worker sends in Authorization;
 //                         rejects any other caller.
+//   AUTO_TOPUP_AMOUNT   — optional broker ledger amount, defaults to 0.05 OG.
 // ----------------------------------------------------------------------
 
 import express from "express";
@@ -34,6 +35,7 @@ const PORT = Number(process.env.PORT || 8787);
 const RPC = process.env.ZG_RPC_URL || "https://evmrpc-testnet.0g.ai";
 const PK = process.env.BROKER_PRIVATE_KEY;
 const SHARED_SECRET = process.env.SIDECAR_SECRET;
+const AUTO_TOPUP_AMOUNT = process.env.AUTO_TOPUP_AMOUNT || "0.05";
 
 if (!PK) { console.error("FATAL: BROKER_PRIVATE_KEY missing"); process.exit(1); }
 if (!SHARED_SECRET) { console.error("FATAL: SIDECAR_SECRET missing"); process.exit(1); }
@@ -44,6 +46,24 @@ const wallet = new ethers.Wallet(PK, provider);
 console.log("[0g-sidecar] wallet:", wallet.address);
 const broker = await createZGComputeNetworkBroker(wallet);
 console.log("[0g-sidecar] broker ready");
+
+let ledgerReady = false;
+async function ensureLedger(amount = AUTO_TOPUP_AMOUNT) {
+  try {
+    const ledger = await broker.ledger.getLedger();
+    ledgerReady = true;
+    return { status: "exists", ledger };
+  } catch (error) {
+    const message = String(error?.message || error);
+    if (!message.toLowerCase().includes("account does not exist")) throw error;
+
+    console.log(`[0g-sidecar] broker ledger missing; creating with ${amount} OG`);
+    await broker.ledger.addLedger(amount);
+    const ledger = await broker.ledger.getLedger();
+    ledgerReady = true;
+    return { status: "created", ledger };
+  }
+}
 
 // Cache provider metadata (endpoint + model name) and an acknowledged flag.
 const metaCache = new Map();
@@ -71,6 +91,18 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true, wallet: wallet.address, models: Object.keys(PROVIDERS) });
 });
 
+// POST /topup { amount?: "0.05" } creates the broker ledger without Render Shell.
+app.post("/topup", async (req, res) => {
+  const amount = String(req.body?.amount || AUTO_TOPUP_AMOUNT);
+  try {
+    const result = await ensureLedger(amount);
+    res.json({ ok: true, wallet: wallet.address, ...result });
+  } catch (e) {
+    console.error("[0g-sidecar] /topup failed:", e);
+    res.status(500).json({ ok: false, wallet: wallet.address, error: String(e?.message || e) });
+  }
+});
+
 // POST /chat { model, system, prompt }  →  { text, model, provider, valid }
 app.post("/chat", async (req, res) => {
   const { model, system, prompt } = req.body || {};
@@ -79,6 +111,7 @@ app.post("/chat", async (req, res) => {
   if (typeof prompt !== "string" || !prompt.trim()) return res.status(400).json({ error: "prompt required" });
 
   try {
+    if (!ledgerReady) await ensureLedger();
     const { endpoint, model: brokerModel } = await getMeta(providerAddr);
     const messages = [];
     if (system) messages.push({ role: "system", content: system });
