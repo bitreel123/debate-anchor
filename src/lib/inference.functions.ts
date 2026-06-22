@@ -26,10 +26,19 @@ Be sharp and specific. No filler, no hedging like "it depends".`.trim();
 
 type Persona = { label: "A" | "B" | "JUDGE"; ogModel: string };
 
+function normalizeSidecarSecret(secret: string) {
+  return secret
+    .trim()
+    .replace(/^Bearer\s+/i, "")
+    .replace(/^["'](.+)["']$/, "$1")
+    .trim();
+}
+
 async function callOG(opts: { sidecar: string; secret: string; model: string; system: string; prompt: string }) {
+  const secret = normalizeSidecarSecret(opts.secret);
   const r = await fetch(`${opts.sidecar.replace(/\/$/, "")}/chat`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${opts.secret}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${secret}`, "x-sidecar-secret": secret },
     body: JSON.stringify({ model: opts.model, system: opts.system, prompt: opts.prompt }),
     signal: AbortSignal.timeout(120_000),
   });
