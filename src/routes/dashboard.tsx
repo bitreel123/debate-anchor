@@ -268,12 +268,8 @@ function Dashboard() {
           <form onSubmit={handleSubmit} className="max-w-3xl mx-auto bg-white rounded-3xl border-2 border-ink shadow-[6px_6px_0_var(--ink)] p-4">
             <div className="flex items-center justify-end gap-2 mb-3">
               {winner && <span className="text-xs font-mono px-2 py-1 rounded-full bg-accent-lemon border border-ink">Verdict: {winner}</span>}
-              <button type="button" onClick={handleCreateLedger} disabled={toppingUp || stage === "thinking"}
-                className="rounded-xl border border-ink/20 bg-ink/5 px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 transition hover:bg-ink/10 disabled:opacity-60">
-                {toppingUp ? <Loader2 className="size-3.5 animate-spin" /> : <Coins className="size-3.5" />}
-                Fix 0G Ledger
-              </button>
             </div>
+
 
             <div className="flex items-end gap-3">
               <textarea value={prompt} onChange={e => setPrompt(e.target.value)} disabled={stage === "thinking"}
