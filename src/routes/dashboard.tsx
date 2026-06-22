@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Wallet, Gavel, ArrowLeft, History, Send, Sparkles, Scale, ExternalLink, Loader2, CheckCircle2, Circle, AlertCircle } from "lucide-react";
+import { Wallet, Gavel, ArrowLeft, History, Send, Scale, Loader2, CheckCircle2, Circle, AlertCircle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import courtroom from "@/assets/courtroom-bg.jpg";
@@ -27,8 +27,40 @@ export const Route = createFileRoute("/dashboard")({
 
 type Line = { role: "A" | "B" | "JUDGE"; round: number; text: string };
 type Stage = "idle" | "thinking" | "ready-to-anchor" | "anchoring" | "anchored";
+type DebateHistoryEntry = {
+  id: string;
+  topic: string;
+  mode: "debate" | "research";
+  createdAt: number;
+  transcript: Line[];
+  winner: string;
+  storage?: { root: string; backend: string } | null;
+  anchor?: { txHash: string; explorerUrl: string; transcriptHash: string } | null;
+};
+
+const HISTORY_KEY = "og-verdict-history-v1";
 
 function short(a?: string | null) { return a ? `${a.slice(0, 6)}…${a.slice(-4)}` : ""; }
+
+function loadDebateHistory(): DebateHistoryEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(HISTORY_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistDebateHistory(items: DebateHistoryEntry[]) {
+  const next = items.slice(0, 40);
+  if (typeof window !== "undefined") window.localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+  return next;
+}
+
+function createHistoryId() {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 function Dashboard() {
   const wallet = useWallet();
