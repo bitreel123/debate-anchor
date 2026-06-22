@@ -68,6 +68,7 @@ function Dashboard() {
   const pinTranscriptFn = useServerFn(pinTranscript);
 
   const [mode, setMode] = useState<"debate" | "research">("debate");
+  const [activePanel, setActivePanel] = useState<"court" | "history">("court");
   const [prompt, setPrompt] = useState("");
   const [stage, setStage] = useState<Stage>("idle");
   const [transcript, setTranscript] = useState<Line[]>([]);
@@ -76,6 +77,7 @@ function Dashboard() {
   const [welcome, setWelcome] = useState("Welcome to OG Verdict Court. Submit a topic and I'll convene the agents.");
   const [storage, setStorage] = useState<{ root: string; backend: string } | null>(null);
   const [anchor, setAnchor] = useState<{ txHash: string; explorerUrl: string; transcriptHash: string } | null>(null);
+  const [history, setHistory] = useState<DebateHistoryEntry[]>(() => loadDebateHistory());
 
   const onConnect = async () => {
     try {
@@ -90,13 +92,15 @@ function Dashboard() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prompt.trim()) { toast("Enter a topic first"); return; }
+    const topic = prompt.trim();
+    setActivePanel("court");
     setStage("thinking");
     setTranscript([]); setWinner(""); setStorage(null); setAnchor(null);
     setWelcome(mode === "debate" ? "Court is in session. Three rounds." : "Researchers — investigate.");
     setSpeaking("judge");
 
     try {
-      const result = await runDebateFn({ data: { topic: prompt, mode } });
+      const result = await runDebateFn({ data: { topic, mode } });
       setTranscript(result.transcript);
       setWinner(result.winner);
 
@@ -108,8 +112,10 @@ function Dashboard() {
       });
 
       // Pin to 0G Storage
-      const pin = await pinTranscriptFn({ data: { transcript: result.transcript, topic: prompt } });
-      setStorage({ root: pin.storageRoot, backend: pin.backend });
+      const pin = await pinTranscriptFn({ data: { transcript: result.transcript, topic } });
+      const storageRef = { root: pin.storageRoot, backend: pin.backend };
+      setStorage(storageRef);
+      setHistory(prev => persistDebateHistory([{ id: createHistoryId(), topic, mode, createdAt: Date.now(), transcript: result.transcript, winner: result.winner, storage: storageRef, anchor: null }, ...prev]));
       setStage("ready-to-anchor");
       toast.success("Debate complete. Anchor to 0G Chain to finalize.");
     } catch (err) {
@@ -132,13 +138,38 @@ function Dashboard() {
       const res = await anchorDebate(signer, {
         transcript, storageRoot: storage.root, topic: prompt, winner, mode,
       });
-      setAnchor({ txHash: res.txHash, explorerUrl: res.explorerUrl, transcriptHash: res.transcriptHash });
+      const anchorRef = { txHash: res.txHash, explorerUrl: res.explorerUrl, transcriptHash: res.transcriptHash };
+      setAnchor(anchorRef);
+      setHistory(prev => persistDebateHistory(prev.map(item => item.topic === prompt && item.winner === winner ? { ...item, anchor: anchorRef } : item)));
       setStage("anchored");
       toast.success("Anchored to 0G Chain ✓");
     } catch (e) {
       toast.error((e as Error).message || "Tx failed");
       setStage("ready-to-anchor");
     }
+  };
+
+  const restoreHistory = (item: DebateHistoryEntry) => {
+    setActivePanel("court");
+    setMode(item.mode);
+    setPrompt(item.topic);
+    setTranscript(item.transcript);
+    setWinner(item.winner);
+    setStorage(item.storage ?? null);
+    setAnchor(item.anchor ?? null);
+    setStage(item.anchor ? "anchored" : item.storage ? "ready-to-anchor" : "idle");
+    setSpeaking("judge");
+    setWelcome("Loaded from history.");
+  };
+
+  const deleteHistory = (id: string) => {
+    setHistory(prev => persistDebateHistory(prev.filter(item => item.id !== id)));
+    toast("Removed from history");
+  };
+
+  const clearHistory = () => {
+    setHistory(persistDebateHistory([]));
+    toast("History cleared");
   };
 
   return (
