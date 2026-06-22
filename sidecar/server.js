@@ -54,6 +54,10 @@ console.log("[0g-sidecar] broker ready");
 
 let ledgerReady = false;
 async function ensureLedger(amount = AUTO_TOPUP_AMOUNT) {
+  const amountNum = Number(amount);
+  if (!Number.isFinite(amountNum) || amountNum <= 0) {
+    throw new Error(`invalid top-up amount: ${amount}`);
+  }
   try {
     const ledger = await broker.ledger.getLedger();
     ledgerReady = true;
@@ -62,8 +66,8 @@ async function ensureLedger(amount = AUTO_TOPUP_AMOUNT) {
     const message = String(error?.message || error);
     if (!message.toLowerCase().includes("account does not exist")) throw error;
 
-    console.log(`[0g-sidecar] broker ledger missing; creating with ${amount} OG`);
-    await broker.ledger.addLedger(amount);
+    console.log(`[0g-sidecar] broker ledger missing; creating with ${amountNum} OG`);
+    await broker.ledger.addLedger(amountNum);
     const ledger = await broker.ledger.getLedger();
     ledgerReady = true;
     return { status: "created", ledger };
