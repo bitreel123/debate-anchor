@@ -40,8 +40,13 @@ const AUTO_TOPUP_AMOUNT = process.env.AUTO_TOPUP_AMOUNT || "0.05";
 if (!PK) { console.error("FATAL: BROKER_PRIVATE_KEY missing"); process.exit(1); }
 if (!SHARED_SECRET) { console.error("FATAL: SIDECAR_SECRET missing"); process.exit(1); }
 
+function normalizePrivateKey(value) {
+  const key = String(value || "").trim().replace(/^['"]|['"]$/g, "");
+  return key.startsWith("0x") ? key : `0x${key}`;
+}
+
 const provider = new ethers.JsonRpcProvider(RPC);
-const wallet = new ethers.Wallet(PK, provider);
+const wallet = new ethers.Wallet(normalizePrivateKey(PK), provider);
 
 console.log("[0g-sidecar] wallet:", wallet.address);
 const broker = await createZGComputeNetworkBroker(wallet);
