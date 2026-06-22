@@ -169,7 +169,7 @@ function Dashboard() {
         {/* Agent B */}
         <Character src={agentBImg} alt="Agent B" label={mode === "debate" ? "Agent B · Con" : "Researcher Beta"}
           className="right-[6%] md:right-[10%] bottom-[24%] w-[140px] sm:w-[170px] md:w-[190px]"
-          bubble={lastLine(transcript, "B") ?? "Ready to argue the opposition — submit a topic."}
+          bubble={lastLine(transcript, "B") ?? (mode === "debate" ? "Ready to argue the opposition — submit a topic." : "Ready to investigate from a different angle.")}
           active={speaking === "b"} color="bg-accent-blue" textPaper pos="top" />
 
 
