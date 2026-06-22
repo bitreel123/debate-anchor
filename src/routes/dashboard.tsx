@@ -191,11 +191,16 @@ function Dashboard() {
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 bg-white rounded-2xl p-1 border border-ink/10 shadow-sm">
             {(["debate", "research"] as const).map(m => (
-              <button key={m} type="button" onClick={() => setMode(m)}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold capitalize transition ${mode === m ? "bg-ink text-paper" : "text-ink/70 hover:text-ink"}`}>
+              <button key={m} type="button" onClick={() => { setMode(m); setActivePanel("court"); }}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold capitalize transition ${activePanel === "court" && mode === m ? "bg-ink text-paper" : "text-ink/70 hover:text-ink"}`}>
                 {m}
               </button>
             ))}
+            <button type="button" onClick={() => setActivePanel("history")}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-1.5 ${activePanel === "history" ? "bg-ink text-paper" : "text-ink/70 hover:text-ink"}`}>
+              <History className="size-4" />
+              History
+            </button>
           </div>
 
           <button onClick={onConnect} disabled={wallet.connecting}
@@ -212,6 +217,9 @@ function Dashboard() {
       <section className="relative flex-1 mx-3 mb-3 rounded-3xl overflow-hidden border-2 border-ink shadow-[6px_6px_0_var(--ink)] bg-[#3a2410] min-h-[560px]">
         <img src={courtroom} alt="Cartoon American courtroom" className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-paper/95 pointer-events-none" />
+
+        {activePanel === "court" ? (
+          <>
 
         {/* 0G Flag — courtroom emblem, beside the judge */}
         <img src={ogFlag} alt="0G Labs flag" width={512} height={768} loading="lazy"
@@ -283,6 +291,10 @@ function Dashboard() {
             )}
           </form>
         </div>
+          </>
+        ) : (
+          <HistoryPanel items={history} onRestore={restoreHistory} onDelete={deleteHistory} onClear={clearHistory} />
+        )}
       </section>
     </main>
   );
