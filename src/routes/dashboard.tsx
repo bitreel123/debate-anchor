@@ -155,21 +155,21 @@ function Dashboard() {
           className="absolute left-[63%] top-[14%] w-[70px] md:w-[88px] drop-shadow-xl pointer-events-none z-[6] -rotate-6" />
 
         {/* Judge */}
-        <Character src={judgeImg} alt="Judge" label={`Judge · ${AGENT_LABELS.judge}`}
+        <Character src={judgeImg} alt="Judge" label="Judge"
           className="left-1/2 top-[18%] -translate-x-1/2 w-[180px] sm:w-[220px] md:w-[240px]"
           bubble={lastLine(transcript, "JUDGE") ?? welcome}
           active={speaking === "judge"} color="bg-white" pos="top" />
 
         {/* Agent A */}
-        <Character src={agentAImg} alt="Agent A" label={`Agent A · Pro · ${AGENT_LABELS.a}`}
+        <Character src={agentAImg} alt="Agent A" label={mode === "debate" ? "Agent A · Pro" : "Researcher Alpha"}
           className="left-[6%] md:left-[10%] bottom-[24%] w-[140px] sm:w-[170px] md:w-[190px]"
-          bubble={lastLine(transcript, "A") ?? "Ready to argue the affirmative — submit a topic."}
+          bubble={lastLine(transcript, "A") ?? (mode === "debate" ? "Ready to argue the affirmative — submit a topic." : "Ready to investigate — submit a question.")}
           active={speaking === "a"} color="bg-accent-orange" pos="top" />
 
         {/* Agent B */}
-        <Character src={agentBImg} alt="Agent B" label={`Agent B · Con · ${AGENT_LABELS.b}`}
+        <Character src={agentBImg} alt="Agent B" label={mode === "debate" ? "Agent B · Con" : "Researcher Beta"}
           className="right-[6%] md:right-[10%] bottom-[24%] w-[140px] sm:w-[170px] md:w-[190px]"
-          bubble={lastLine(transcript, "B") ?? "Ready to argue the opposition — submit a topic."}
+          bubble={lastLine(transcript, "B") ?? (mode === "debate" ? "Ready to argue the opposition — submit a topic." : "Ready to investigate from a different angle.")}
           active={speaking === "b"} color="bg-accent-blue" textPaper pos="top" />
 
 
@@ -243,11 +243,6 @@ function StatusRow({ ok, label, detail }: { ok: boolean; label: string; detail: 
   );
 }
 
-const AGENT_LABELS = {
-  a: "Llama 3.3 70B · 0G Compute",
-  b: "DeepSeek R1 70B · 0G Compute",
-  judge: "Llama 3.3 70B · 0G Compute",
-} as const;
 
 function Character({ src, alt, label, className, bubble, active, color, textPaper, pos }: {
   src: string; alt: string; label: string; className: string; bubble: string;
