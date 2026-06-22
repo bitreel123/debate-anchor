@@ -243,11 +243,6 @@ function StatusRow({ ok, label, detail }: { ok: boolean; label: string; detail: 
   );
 }
 
-const AGENT_LABELS = {
-  a: "Llama 3.3 70B · 0G Compute",
-  b: "DeepSeek R1 70B · 0G Compute",
-  judge: "Llama 3.3 70B · 0G Compute",
-} as const;
 
 function Character({ src, alt, label, className, bubble, active, color, textPaper, pos }: {
   src: string; alt: string; label: string; className: string; bubble: string;
