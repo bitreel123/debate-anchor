@@ -323,6 +323,67 @@ function StatusRow({ ok, label, detail }: { ok: boolean; label: string; detail: 
   );
 }
 
+function HistoryPanel({ items, onRestore, onDelete, onClear }: {
+  items: DebateHistoryEntry[];
+  onRestore: (item: DebateHistoryEntry) => void;
+  onDelete: (id: string) => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="absolute inset-0 z-10 p-4 md:p-6">
+      <div className="mx-auto flex h-full max-w-5xl flex-col rounded-3xl border-2 border-ink bg-paper/95 p-4 shadow-[6px_6px_0_var(--ink)] backdrop-blur-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b-2 border-ink/10 pb-3">
+          <div>
+            <h2 className="font-display text-2xl font-black">History</h2>
+            <p className="text-sm text-ink/60">{items.length ? `${items.length} saved prompt${items.length === 1 ? "" : "s"}` : "No saved prompts yet"}</p>
+          </div>
+          {items.length > 0 && (
+            <button type="button" onClick={onClear} className="flex items-center gap-2 rounded-2xl border-2 border-ink bg-white px-4 py-2 text-sm font-semibold shadow-[3px_3px_0_var(--ink)] transition hover:scale-[1.02]">
+              <Trash2 className="size-4" />
+              Clear
+            </button>
+          )}
+        </div>
+        {items.length === 0 ? (
+          <div className="grid flex-1 place-items-center text-center">
+            <div className="max-w-sm">
+              <History className="mx-auto mb-3 size-10 text-ink/35" />
+              <p className="font-semibold">Completed debates and research runs will appear here.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid flex-1 gap-3 overflow-y-auto pr-1 md:grid-cols-2 nice-scroll">
+            {items.map(item => (
+              <article key={item.id} className="flex min-h-[180px] flex-col rounded-2xl border-2 border-ink bg-white p-4 shadow-[4px_4px_0_var(--ink)]">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-ink bg-accent-lemon px-2 py-0.5 text-[10px] font-mono uppercase">{item.mode}</span>
+                      {item.winner && <span className="rounded-full bg-ink px-2 py-0.5 text-[10px] font-mono uppercase text-paper">Verdict {item.winner}</span>}
+                    </div>
+                    <h3 className="line-clamp-2 font-display text-lg font-black leading-tight">{item.topic}</h3>
+                    <time className="text-xs text-ink/50">{new Date(item.createdAt).toLocaleString()}</time>
+                  </div>
+                  <button type="button" aria-label="Delete history item" onClick={() => onDelete(item.id)} className="rounded-xl border border-ink/15 p-2 text-ink/55 transition hover:bg-ink/5 hover:text-ink">
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
+                <p className="line-clamp-3 flex-1 whitespace-pre-wrap text-sm leading-snug text-ink/70">{lastLine(item.transcript, "JUDGE") ?? item.transcript[0]?.text ?? "Saved run"}</p>
+                <div className="mt-4 flex items-center justify-between gap-2 text-xs text-ink/55">
+                  <span>{item.transcript.length} messages{item.anchor ? " · anchored" : item.storage ? " · stored" : ""}</span>
+                  <button type="button" onClick={() => onRestore(item)} className="rounded-xl border-2 border-ink bg-accent-mint px-3 py-2 font-semibold text-ink shadow-[2px_2px_0_var(--ink)] transition hover:scale-[1.03]">
+                    Open
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 function Character({ src, alt, label, className, bubble, active, color, textPaper, pos }: {
   src: string; alt: string; label: string; className: string; bubble: string;
