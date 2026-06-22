@@ -78,6 +78,7 @@ function Dashboard() {
   const [storage, setStorage] = useState<{ root: string; backend: string } | null>(null);
   const [anchor, setAnchor] = useState<{ txHash: string; explorerUrl: string; transcriptHash: string } | null>(null);
   const [history, setHistory] = useState<DebateHistoryEntry[]>(() => loadDebateHistory());
+  const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
 
   const onConnect = async () => {
     try {
@@ -93,9 +94,11 @@ function Dashboard() {
     e.preventDefault();
     if (!prompt.trim()) { toast("Enter a topic first"); return; }
     const topic = prompt.trim();
+    const historyId = createHistoryId();
     setActivePanel("court");
     setStage("thinking");
     setTranscript([]); setWinner(""); setStorage(null); setAnchor(null);
+    setCurrentHistoryId(null);
     setWelcome(mode === "debate" ? "Court is in session. Three rounds." : "Researchers — investigate.");
     setSpeaking("judge");
 
@@ -115,7 +118,8 @@ function Dashboard() {
       const pin = await pinTranscriptFn({ data: { transcript: result.transcript, topic } });
       const storageRef = { root: pin.storageRoot, backend: pin.backend };
       setStorage(storageRef);
-      setHistory(prev => persistDebateHistory([{ id: createHistoryId(), topic, mode, createdAt: Date.now(), transcript: result.transcript, winner: result.winner, storage: storageRef, anchor: null }, ...prev]));
+      setCurrentHistoryId(historyId);
+      setHistory(prev => persistDebateHistory([{ id: historyId, topic, mode, createdAt: Date.now(), transcript: result.transcript, winner: result.winner, storage: storageRef, anchor: null }, ...prev]));
       setStage("ready-to-anchor");
       toast.success("Debate complete. Anchor to 0G Chain to finalize.");
     } catch (err) {
@@ -140,7 +144,7 @@ function Dashboard() {
       });
       const anchorRef = { txHash: res.txHash, explorerUrl: res.explorerUrl, transcriptHash: res.transcriptHash };
       setAnchor(anchorRef);
-      setHistory(prev => persistDebateHistory(prev.map(item => item.topic === prompt && item.winner === winner ? { ...item, anchor: anchorRef } : item)));
+      setHistory(prev => persistDebateHistory(prev.map(item => item.id === currentHistoryId ? { ...item, anchor: anchorRef } : item)));
       setStage("anchored");
       toast.success("Anchored to 0G Chain ✓");
     } catch (e) {
@@ -157,6 +161,7 @@ function Dashboard() {
     setWinner(item.winner);
     setStorage(item.storage ?? null);
     setAnchor(item.anchor ?? null);
+    setCurrentHistoryId(item.id);
     setStage(item.anchor ? "anchored" : item.storage ? "ready-to-anchor" : "idle");
     setSpeaking("judge");
     setWelcome("Loaded from history.");
