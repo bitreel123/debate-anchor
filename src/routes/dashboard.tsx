@@ -183,7 +183,7 @@ function Dashboard() {
     setToppingUp(true);
     try {
       const result = await topUpSidecarLedgerFn({ data: { amount: "0.05" } });
-      toast.success(result.status === "created" ? "0G Compute ledger created" : "0G Compute ledger already exists");
+      toast.success(result.status === "not-needed" ? "Running on Lovable AI — no ledger needed" : "0G ledger ready");
     } catch (e) {
       toast.error((e as Error).message || "Could not create 0G Compute ledger");
     } finally {
