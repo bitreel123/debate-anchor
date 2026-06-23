@@ -28,9 +28,9 @@ If anyone challenges the verdict later, you re-hash the stored transcript and co
 | No verifiable inference | Output could be from any model, mid-fine-tune, or post-edited. |
 | No durable record | Screenshots and chat logs aren't evidence. |
 
-## 3. The Solution — built end-to-end on 0G
+## 3. The Solution — verifiable AI on 0G
 
-OG Verdict uses **three** layers of the 0G stack so the entire AI pipeline — compute, storage, and settlement — lives in the same verifiable network.
+OG Verdict uses **three** layers of the 0G stack so the entire AI pipeline — compute, storage, and settlement — lives in the same verifiable network. The on-chain anchor + 0G Storage layers are always live. For inference we run a hybrid setup: **Lovable AI Gateway** (Gemini 2.5 Pro for Agent A, GPT-5 mini for Agent B, Gemini 2.5 Pro for the Judge) powers the production app today, with **0G Compute** (Llama 3.3 70B + DeepSeek R1 70B via the TEE-verified `@0glabs/0g-serving-broker`) wired in as an optional sidecar for when broker credits are available.
 
 ```text
                  ┌──────────────────────────────────────────┐
@@ -42,13 +42,14 @@ OG Verdict uses **three** layers of the 0G stack so the entire AI pipeline — c
                  │  TanStack Start server fn (edge worker)  │
                  └───────┬──────────────────────┬───────────┘
                          │                      │
-       Agent A (Pro)     │   Agent B (Con)      │   Judge
-       Llama 3.3 70B     │   DeepSeek R1 70B    │   Llama 3.3 70B
+       Agent A           │   Agent B            │   Judge
+       Gemini 2.5 Pro    │   GPT-5 mini         │   Gemini 2.5 Pro
+       (+ Llama 3.3 70B  │   (+ DeepSeek R1 70B │
+        via 0G Compute)  │    via 0G Compute)   │
                          ▼                      ▼
                  ┌──────────────────────────────────────────┐
-                 │  0G Compute Sidecar  (Node / Render)     │
-                 │  @0glabs/0g-serving-broker               │
-                 │  → TEE-verified inference                │
+                 │  Lovable AI Gateway  (production)        │
+                 │  OR  0G Compute Sidecar (optional)       │
                  └───────────────┬──────────────────────────┘
                                  │  transcript
                                  ▼
@@ -70,7 +71,7 @@ OG Verdict uses **three** layers of the 0G stack so the entire AI pipeline — c
 - ⚖️ **Two modes**
   - **Debate** — 3 rounds, Pro vs Con, judge rules `A` / `B` / `TIE`.
   - **Research** — both agents investigate from different angles, judge synthesizes.
-- 🤖 **Two models, two perspectives** — Llama 3.3 70B argues *for*; DeepSeek R1 70B argues *against*. Different families produce genuinely different reasoning, not the same model role-playing.
+- 🤖 **Two models, two perspectives** — Gemini 2.5 Pro argues *for*; GPT-5 mini argues *against*; Gemini 2.5 Pro rules. Different families produce genuinely different reasoning, not the same model role-playing. Llama 3.3 70B and DeepSeek R1 70B are wired in as an optional 0G Compute path when broker credits are available.
 - 🔐 **Verifiable inference** — every response is signed by the provider's TEE and verified by the broker (`broker.inference.processResponse`).
 - 📦 **0G Storage pinning** — the transcript is uploaded to the 0G Storage Indexer; the returned root is content-addressed.
 - ⛓ **0G Chain anchor** — `VerdictRegistry.recordDebate(...)` writes the hash + root + winner. Anyone can call `verify(id, hash)` later.
