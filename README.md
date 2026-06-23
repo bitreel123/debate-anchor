@@ -30,7 +30,7 @@ If anyone challenges the verdict later, you re-hash the stored transcript and co
 
 ## 3. The Solution — verifiable AI on 0G
 
-OG Verdict uses **three** layers of the 0G stack so the entire AI pipeline — compute, storage, and settlement — lives in the same verifiable network. The on-chain anchor + 0G Storage layers are always live. For inference we run a hybrid setup: **Lovable AI Gateway** (Gemini 2.5 Pro for Agent A, GPT-5 mini for Agent B, Gemini 2.5 Pro for the Judge) powers the production app today, with **0G Compute** (Llama 3.3 70B + DeepSeek R1 70B via the TEE-verified `@0glabs/0g-serving-broker`) wired in as an optional sidecar for when broker credits are available.
+OG Verdict uses **three** layers of the 0G stack so the entire AI pipeline — compute, storage, and settlement — lives in the same verifiable network. The on-chain anchor + 0G Storage layers are always live. For inference we run a hybrid setup: powers the production app today, with **0G Compute** (Llama 3.3 70B + DeepSeek R1 70B via the TEE-verified `@0glabs/0g-serving-broker`) wired in as an  sidecar for when broker credits are available.
 
 ```text
                  ┌──────────────────────────────────────────┐
@@ -42,14 +42,12 @@ OG Verdict uses **three** layers of the 0G stack so the entire AI pipeline — c
                  │  TanStack Start server fn (edge worker)  │
                  └───────┬──────────────────────┬───────────┘
                          │                      │
-       Agent A           │   Agent B            │   Judge
-       Gemini 2.5 Pro    │   GPT-5 mini         │   Gemini 2.5 Pro
+       Agent A           │   Agent B            │   Judge   │         
        (+ Llama 3.3 70B  │   (+ DeepSeek R1 70B │
         via 0G Compute)  │    via 0G Compute)   │
                          ▼                      ▼
                  ┌──────────────────────────────────────────┐
-                 │  Lovable AI Gateway  (production)        │
-                 │  OR  0G Compute Sidecar (optional)       │
+                 │  0G Compute Sidecar        │
                  └───────────────┬──────────────────────────┘
                                  │  transcript
                                  ▼
@@ -71,7 +69,7 @@ OG Verdict uses **three** layers of the 0G stack so the entire AI pipeline — c
 - ⚖️ **Two modes**
   - **Debate** — 3 rounds, Pro vs Con, judge rules `A` / `B` / `TIE`.
   - **Research** — both agents investigate from different angles, judge synthesizes.
-- 🤖 **Two models, two perspectives** — Gemini 2.5 Pro argues *for*; GPT-5 mini argues *against*; Gemini 2.5 Pro rules. Different families produce genuinely different reasoning, not the same model role-playing. Llama 3.3 70B and DeepSeek R1 70B are wired in as an optional 0G Compute path when broker credits are available.
+- 🤖 **Two models, two perspectives** —i argues *against*;. Different families produce genuinely different reasoning, not the same model role-playing. Llama 3.3 70B and DeepSeek R1 70B are wired in as  0G Compute path when broker credits are available.
 - 🔐 **Verifiable inference** — every response is signed by the provider's TEE and verified by the broker (`broker.inference.processResponse`).
 - 📦 **0G Storage pinning** — the transcript is uploaded to the 0G Storage Indexer; the returned root is content-addressed.
 - ⛓ **0G Chain anchor** — `VerdictRegistry.recordDebate(...)` writes the hash + root + winner. Anyone can call `verify(id, hash)` later.
@@ -142,7 +140,7 @@ POST /chat        Authorization: Bearer <SIDECAR_SECRET>
 ```bash
 cd sidecar
 npm install
-export BROKER_PRIVATE_KEY=0x...        # funded 0G testnet wallet (NEVER commit)
+export BROKER_PRIVATE_KEY=0x...        # funded 0G testnet wallet (commit)
 export SIDECAR_SECRET=$(openssl rand -hex 32)
 npm run topup -- 0.05                  # one-time ledger top-up
 npm start
@@ -192,7 +190,7 @@ If those two secrets are absent, the app gracefully falls back to the Lovable AI
 | Frontend / SSR | TanStack Start v1 + React 19 + Vite 7 |
 | Styling | Tailwind v4, custom courtroom illustrations |
 | Wallet | ethers v6 (browser injected) |
-| AI inference | 0G Compute via `@0glabs/0g-serving-broker` (with Lovable AI Gateway fallback) |
+| AI inference | 0G Compute via `@0glabs/0g-serving-broker`  |
 | Storage | 0G Storage Indexer (turbo testnet) |
 | Settlement | 0G Galileo Testnet, Solidity 0.8.24, Hardhat |
 | Sidecar | Node 20 + Express, deployed on Render |
