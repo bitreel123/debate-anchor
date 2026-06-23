@@ -8,12 +8,11 @@ const Input = z.object({
   mode: z.enum(["debate", "research"]),
 });
 
-// 0G Compute model IDs (resolved by the sidecar to provider addresses).
-const OG_LLAMA    = "llama-3.3-70b-instruct";
-const OG_DEEPSEEK = "deepseek-r1-70b";
-
-// Fallback only — used if the sidecar isn't configured yet.
-const FALLBACK_MODEL = "google/gemini-3-flash-preview";
+// Lovable AI Gateway models — Agent A uses Gemini, Agent B uses OpenAI (different
+// families produce genuinely different reasoning instead of the same model role-playing).
+const AGENT_A_MODEL = "google/gemini-2.5-pro";
+const AGENT_B_MODEL = "openai/gpt-5-mini";
+const JUDGE_MODEL   = "google/gemini-2.5-pro";
 
 const DETAIL_RULES = `
 Write a DETAILED, evidence-led response (8-12 sentences, ~250-400 words).
@@ -24,94 +23,29 @@ Include:
   • acknowledge the strongest counter-point and rebut it
 Be sharp and specific. No filler, no hedging like "it depends".`.trim();
 
-type Persona = { label: "A" | "B" | "JUDGE"; ogModel: string };
-
-function normalizeSidecarSecret(secret: string) {
-  return secret
-    .trim()
-    .replace(/^Bearer\s+/i, "")
-    .replace(/^["'](.+)["']$/, "$1")
-    .trim();
-}
-
-async function callOG(opts: { sidecar: string; secret: string; model: string; system: string; prompt: string }) {
-  const secret = normalizeSidecarSecret(opts.secret);
-  const r = await fetch(`${opts.sidecar.replace(/\/$/, "")}/chat`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${secret}`, "x-sidecar-secret": secret },
-    body: JSON.stringify({ model: opts.model, system: opts.system, prompt: opts.prompt }),
-    signal: AbortSignal.timeout(120_000),
-  });
-  if (!r.ok) {
-    const t = await r.text().catch(() => "");
-    throw new Error(`0G sidecar ${r.status}: ${t.slice(0, 200)}`);
-  }
-  const j = (await r.json()) as { text: string; valid?: boolean; provider?: string; chatID?: string };
-  return j;
-}
-
-export const topUpSidecarLedger = createServerFn({ method: "POST" })
-  .inputValidator((d: unknown) => z.object({ amount: z.string().default("0.05") }).parse(d ?? {}))
-  .handler(async ({ data }) => {
-    const sidecar = process.env.OG_COMPUTE_SIDECAR_URL;
-    const secret = process.env.OG_COMPUTE_SIDECAR_SECRET;
-    if (!sidecar || !secret) throw new Error("0G sidecar URL/secret is not configured");
-
-    const cleanSecret = normalizeSidecarSecret(secret);
-    const r = await fetch(`${sidecar.replace(/\/$/, "")}/topup`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${cleanSecret}`, "x-sidecar-secret": cleanSecret },
-      body: JSON.stringify({ amount: data.amount }),
-      signal: AbortSignal.timeout(120_000),
-    });
-    if (!r.ok) {
-      const t = await r.text().catch(() => "");
-      throw new Error(`0G sidecar top-up ${r.status}: ${t.slice(0, 240)}`);
-    }
-    const json = (await r.json()) as { ok?: unknown; wallet?: unknown; status?: unknown; ledger?: unknown };
-    return {
-      ok: Boolean(json.ok),
-      wallet: String(json.wallet || ""),
-      status: String(json.status || "unknown"),
-      ledger: json.ledger ? JSON.stringify(json.ledger) : undefined,
-    };
-  });
-
 export const runDebate = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => Input.parse(d))
   .handler(async ({ data }) => {
-    const sidecar = process.env.OG_COMPUTE_SIDECAR_URL;
-    const secret  = process.env.OG_COMPUTE_SIDECAR_SECRET;
-    const useOG   = Boolean(sidecar && secret);
-
     const lovableKey = process.env.LOVABLE_API_KEY;
-    if (!useOG && !lovableKey) throw new Error("Neither 0G sidecar nor LOVABLE_API_KEY is configured");
-    const gw = lovableKey ? createLovableAiGatewayProvider(lovableKey) : null;
+    if (!lovableKey) throw new Error("LOVABLE_API_KEY is not configured");
+    const gw = createLovableAiGatewayProvider(lovableKey);
 
-    async function speak(p: Persona, system: string, prompt: string) {
-      if (useOG) {
-        const out = await callOG({ sidecar: sidecar!, secret: secret!, model: p.ogModel, system, prompt });
-        return { text: out.text, meta: { backend: "0g-compute" as const, provider: out.provider, valid: out.valid, chatID: out.chatID } };
-      }
-      const out = await generateText({ model: gw!(FALLBACK_MODEL), system, prompt });
-      return { text: out.text, meta: { backend: "lovable-ai-gateway-fallback" as const } };
+    async function speak(model: string, system: string, prompt: string) {
+      const out = await generateText({ model: gw(model), system, prompt });
+      return { text: out.text, model };
     }
-
-    const A: Persona = { label: "A", ogModel: OG_LLAMA };
-    const B: Persona = { label: "B", ogModel: OG_DEEPSEEK };
-    const J: Persona = { label: "JUDGE", ogModel: OG_LLAMA };
 
     const transcript: Array<{ role: "A" | "B" | "JUDGE"; round: number; text: string; backend?: string; valid?: boolean }> = [];
 
     if (data.mode === "research") {
       const [a, b] = await Promise.all([
-        speak(A, `You are Researcher Alpha (Llama 3.3 70B via 0G Compute). ${DETAIL_RULES}`, `Question: ${data.topic}`),
-        speak(B, `You are Researcher Beta (DeepSeek R1 70B via 0G Compute). Approach from a different angle than a default LLM. ${DETAIL_RULES}`, `Question: ${data.topic}`),
+        speak(AGENT_A_MODEL, `You are Researcher Alpha (Gemini 2.5 Pro). ${DETAIL_RULES}`, `Question: ${data.topic}`),
+        speak(AGENT_B_MODEL, `You are Researcher Beta (GPT-5 mini). Approach from a different angle than a default LLM. ${DETAIL_RULES}`, `Question: ${data.topic}`),
       ]);
-      transcript.push({ role: "A", round: 1, text: a.text, backend: a.meta.backend, valid: a.meta.valid });
-      transcript.push({ role: "B", round: 1, text: b.text, backend: b.meta.backend, valid: b.meta.valid });
+      transcript.push({ role: "A", round: 1, text: a.text, backend: a.model, valid: true });
+      transcript.push({ role: "B", round: 1, text: b.text, backend: b.model, valid: true });
 
-      const judge = await speak(J,
+      const judge = await speak(JUDGE_MODEL,
         `You are the Judge. Synthesize both researcher answers into ONE authoritative final answer.
 Structure your output as:
   **Reasoning:** 4-6 sentences weighing each side's strongest evidence.
@@ -120,32 +54,32 @@ Structure your output as:
 End with EXACTLY one line: "Verdict: SYNTHESIS".`,
         `QUESTION: ${data.topic}\n\nALPHA:\n${a.text}\n\nBETA:\n${b.text}`,
       );
-      transcript.push({ role: "JUDGE", round: 1, text: judge.text, backend: judge.meta.backend, valid: judge.meta.valid });
-      return { transcript, winner: "SYNTHESIS", backend: useOG ? "0g-compute" : "fallback" };
+      transcript.push({ role: "JUDGE", round: 1, text: judge.text, backend: judge.model, valid: true });
+      return { transcript, winner: "SYNTHESIS", backend: "lovable-ai-gateway" };
     }
 
     // 3-round debate
     let history = "";
     for (let round = 1; round <= 3; round++) {
-      const a = await speak(A,
-        `You are Agent A (Llama 3.3 70B via 0G Compute) arguing FOR the proposition. Round ${round} of 3. ${DETAIL_RULES} ${
+      const a = await speak(AGENT_A_MODEL,
+        `You are Agent A (Gemini 2.5 Pro) arguing FOR the proposition. Round ${round} of 3. ${DETAIL_RULES} ${
           round > 1 ? "Directly rebut Agent B's latest point before advancing your own." : "This is your opening statement."
         }`,
         `PROPOSITION: ${data.topic}\n\nPRIOR EXCHANGE:\n${history || "(none yet)"}`,
       );
-      transcript.push({ role: "A", round, text: a.text, backend: a.meta.backend, valid: a.meta.valid });
+      transcript.push({ role: "A", round, text: a.text, backend: a.model, valid: true });
       history += `\n\n[A r${round}] ${a.text}`;
 
-      const b = await speak(B,
-        `You are Agent B (DeepSeek R1 70B via 0G Compute) arguing AGAINST the proposition. Round ${round} of 3. ${DETAIL_RULES} Directly rebut Agent A's latest point with specifics.`,
+      const b = await speak(AGENT_B_MODEL,
+        `You are Agent B (GPT-5 mini) arguing AGAINST the proposition. Round ${round} of 3. ${DETAIL_RULES} Directly rebut Agent A's latest point with specifics.`,
         `PROPOSITION: ${data.topic}\n\nPRIOR EXCHANGE:\n${history}`,
       );
-      transcript.push({ role: "B", round, text: b.text, backend: b.meta.backend, valid: b.meta.valid });
+      transcript.push({ role: "B", round, text: b.text, backend: b.model, valid: true });
       history += `\n\n[B r${round}] ${b.text}`;
     }
 
-    const judge = await speak(J,
-      `You are the Judge (Llama 3.3 70B via 0G Compute). Read the full 3-round exchange and rule.
+    const judge = await speak(JUDGE_MODEL,
+      `You are the Judge (Gemini 2.5 Pro). Read the full 3-round exchange and rule.
 Structure your ruling EXACTLY as:
   **Reasoning:** 4-6 sentences explaining WHY the winning side argued better — cite specific points from the transcript.
   **How / Mechanism:** 2-3 sentences on the underlying mechanism that settled the question.
@@ -154,10 +88,16 @@ Structure your ruling EXACTLY as:
 End with EXACTLY one line: "Verdict: A" or "Verdict: B" or "Verdict: TIE".`,
       `PROPOSITION: ${data.topic}\n\nTRANSCRIPT:${history}`,
     );
-    transcript.push({ role: "JUDGE", round: 4, text: judge.text, backend: judge.meta.backend, valid: judge.meta.valid });
+    transcript.push({ role: "JUDGE", round: 4, text: judge.text, backend: judge.model, valid: true });
 
     const m = judge.text.match(/Verdict:\s*(A|B|TIE)/i);
     const winner = (m?.[1]?.toUpperCase() ?? "TIE") as "A" | "B" | "TIE";
 
-    return { transcript, winner, backend: useOG ? "0g-compute" : "fallback" };
+    return { transcript, winner, backend: "lovable-ai-gateway" };
   });
+
+// Kept as a no-op shim so existing imports don't break; the sidecar ledger
+// path is no longer used now that inference runs through Lovable AI Gateway.
+export const topUpSidecarLedger = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => z.object({ amount: z.string().default("0.05") }).parse(d ?? {}))
+  .handler(async () => ({ ok: true, wallet: "", status: "not-needed", ledger: undefined as string | undefined }));
