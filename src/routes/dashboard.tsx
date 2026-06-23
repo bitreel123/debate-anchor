@@ -183,7 +183,7 @@ function Dashboard() {
     setToppingUp(true);
     try {
       const result = await topUpSidecarLedgerFn({ data: { amount: "0.05" } });
-      toast.success(result.status === "created" ? "0G Compute ledger created" : "0G Compute ledger already exists");
+      toast.success(result.status === "not-needed" ? "Running on Lovable AI — no ledger needed" : "0G ledger ready");
     } catch (e) {
       toast.error((e as Error).message || "Could not create 0G Compute ledger");
     } finally {
@@ -251,13 +251,13 @@ function Dashboard() {
           active={speaking === "judge"} color="bg-white" pos="top" />
 
         {/* Agent A */}
-        <Character src={agentAImg} alt="Agent A" label={mode === "debate" ? "Agent A · Pro" : "Researcher Alpha"}
+        <Character src={agentAImg} alt="Agent A" label=""
           className="left-[6%] md:left-[10%] bottom-[24%] w-[140px] sm:w-[170px] md:w-[190px]"
           bubble={lastLine(transcript, "A") ?? (mode === "debate" ? "Ready to argue the affirmative — submit a topic." : "Ready to investigate — submit a question.")}
           active={speaking === "a"} color="bg-accent-orange" pos="top" />
 
         {/* Agent B */}
-        <Character src={agentBImg} alt="Agent B" label={mode === "debate" ? "Agent B · Con" : "Researcher Beta"}
+        <Character src={agentBImg} alt="Agent B" label=""
           className="right-[6%] md:right-[10%] bottom-[24%] w-[140px] sm:w-[170px] md:w-[190px]"
           bubble={lastLine(transcript, "B") ?? (mode === "debate" ? "Ready to argue the opposition — submit a topic." : "Ready to investigate from a different angle.")}
           active={speaking === "b"} color="bg-accent-blue" textPaper pos="top" />
@@ -410,9 +410,11 @@ function Character({ src, alt, label, className, bubble, active, color, textPape
     <div className={`absolute ${className}`}>
       <div className={`absolute ${bp} w-[260px] sm:w-[320px] md:w-[360px] transition-all duration-300 ${active ? "opacity-100 scale-100" : "opacity-95 scale-[0.97]"}`}>
         <div className={`${color} ${textPaper ? "text-paper" : "text-ink"} rounded-2xl px-4 py-3 border-2 border-ink shadow-[4px_4px_0_var(--ink)]`}>
-          <div className={`text-[10px] font-mono uppercase mb-1 flex items-center justify-between gap-2 ${textPaper ? "text-paper/70" : "text-ink/50"}`}>
-            <span className="truncate">{label}</span>
-          </div>
+          {label && (
+            <div className={`text-[10px] font-mono uppercase mb-1 flex items-center justify-between gap-2 ${textPaper ? "text-paper/70" : "text-ink/50"}`}>
+              <span className="truncate">{label}</span>
+            </div>
+          )}
           <div className="max-h-[260px] overflow-y-auto pr-1 nice-scroll">
             <p className="font-medium text-sm leading-snug whitespace-pre-wrap">{bubble}</p>
           </div>
