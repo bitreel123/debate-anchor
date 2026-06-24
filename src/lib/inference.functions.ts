@@ -1,20 +1,16 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { generateText } from "ai";
-import { createLovableAiGatewayProvider } from "./ai-gateway.server";
 
 const Input = z.object({
   topic: z.string().min(1).max(500),
   mode: z.enum(["debate", "research"]),
 });
 
-// Lovable AI Gateway models — Agent A uses Gemini, Agent B uses OpenAI (different
-// families produce genuinely different reasoning instead of the same model role-playing).
-// Lovable AI Gateway only currently exposes Google Gemini families; we pick two
-// distinct tiers so Agent A and Agent B still reason differently.
-const AGENT_A_MODEL = "google/gemini-2.5-pro";
-const AGENT_B_MODEL = "google/gemini-2.5-flash";
-const JUDGE_MODEL   = "google/gemini-2.5-pro";
+// Direct Google Generative Language API — no Lovable Gateway, no credits used.
+// User supplies GEMINI_API_KEY from https://aistudio.google.com/apikey (free tier).
+const AGENT_A_MODEL = "gemini-2.5-pro";
+const AGENT_B_MODEL = "gemini-2.5-flash";
+const JUDGE_MODEL   = "gemini-2.5-pro";
 
 const DETAIL_RULES = `
 Write a DETAILED, evidence-led response (8-12 sentences, ~250-400 words).
@@ -25,29 +21,48 @@ Include:
   • acknowledge the strongest counter-point and rebut it
 Be sharp and specific. No filler, no hedging like "it depends".`.trim();
 
+async function callGemini(apiKey: string, model: string, system: string, prompt: string): Promise<string> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.8, maxOutputTokens: 2048, topP: 0.95 },
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    if (res.status === 429) throw new Error("Gemini rate-limited. Wait a few seconds and click Call to Order again.");
+    if (res.status === 403 || res.status === 401) throw new Error("GEMINI_API_KEY is invalid or has no access — generate a fresh key at https://aistudio.google.com/apikey.");
+    throw new Error(`Gemini ${res.status}: ${body.slice(0, 300)}`);
+  }
+  const json = (await res.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }>;
+    promptFeedback?: { blockReason?: string };
+  };
+  if (json.promptFeedback?.blockReason) {
+    throw new Error(`Gemini blocked the prompt (${json.promptFeedback.blockReason}). Try rephrasing the topic.`);
+  }
+  const text = json.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("").trim();
+  if (!text) throw new Error("Gemini returned an empty response. Try again or rephrase the topic.");
+  return text;
+}
+
 export const runDebate = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => Input.parse(d))
   .handler(async ({ data }) => {
-    const lovableKey = process.env.LOVABLE_API_KEY;
-    if (!lovableKey) throw new Error("LOVABLE_API_KEY is not configured");
-    const gw = createLovableAiGatewayProvider(lovableKey);
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error(
+        "GEMINI_API_KEY is not configured. Get a free key at https://aistudio.google.com/apikey and add it as a secret named GEMINI_API_KEY.",
+      );
+    }
 
     async function speak(model: string, system: string, prompt: string) {
-      try {
-        const out = await generateText({ model: gw(model), system, prompt });
-        return { text: out.text, model };
-      } catch (err: unknown) {
-        const msg = String((err as Error)?.message ?? err ?? "");
-        if (/payment_required|Not enough credits|402/i.test(msg)) {
-          throw new Error(
-            "Out of Lovable AI credits — top up your workspace at Settings → Workspace → Usage to run the courtroom. (No wallet payment is needed; this is AI Gateway credits, not 0G gas.)",
-          );
-        }
-        if (/rate.?limit|429/i.test(msg)) {
-          throw new Error("Lovable AI Gateway rate-limited. Wait a few seconds and click Call to Order again.");
-        }
-        throw err;
-      }
+      const text = await callGemini(apiKey!, model, system, prompt);
+      return { text, model };
     }
 
     const transcript: Array<{ role: "A" | "B" | "JUDGE"; round: number; text: string; backend?: string; valid?: boolean }> = [];
@@ -70,7 +85,7 @@ End with EXACTLY one line: "Verdict: SYNTHESIS".`,
         `QUESTION: ${data.topic}\n\nALPHA:\n${a.text}\n\nBETA:\n${b.text}`,
       );
       transcript.push({ role: "JUDGE", round: 1, text: judge.text, backend: judge.model, valid: true });
-      return { transcript, winner: "SYNTHESIS", backend: "lovable-ai-gateway" };
+      return { transcript, winner: "SYNTHESIS", backend: "google-gemini-direct" };
     }
 
     // 3-round debate
@@ -108,11 +123,10 @@ End with EXACTLY one line: "Verdict: A" or "Verdict: B" or "Verdict: TIE".`,
     const m = judge.text.match(/Verdict:\s*(A|B|TIE)/i);
     const winner = (m?.[1]?.toUpperCase() ?? "TIE") as "A" | "B" | "TIE";
 
-    return { transcript, winner, backend: "lovable-ai-gateway" };
+    return { transcript, winner, backend: "google-gemini-direct" };
   });
 
-// Kept as a no-op shim so existing imports don't break; the sidecar ledger
-// path is no longer used now that inference runs through Lovable AI Gateway.
+// Kept as a no-op shim so existing imports don't break.
 export const topUpSidecarLedger = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ amount: z.string().default("0.05") }).parse(d ?? {}))
   .handler(async () => ({ ok: true, wallet: "", status: "not-needed", ledger: undefined as string | undefined }));
