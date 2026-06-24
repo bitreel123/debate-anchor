@@ -55,7 +55,7 @@ export const runDebate = createServerFn({ method: "POST" })
     if (data.mode === "research") {
       const [a, b] = await Promise.all([
         speak(AGENT_A_MODEL, `You are Researcher Alpha (Gemini 2.5 Pro). ${DETAIL_RULES}`, `Question: ${data.topic}`),
-        speak(AGENT_B_MODEL, `You are Researcher Beta (GPT-5 mini). Approach from a different angle than a default LLM. ${DETAIL_RULES}`, `Question: ${data.topic}`),
+        speak(AGENT_B_MODEL, `You are Researcher Beta (Gemini 2.5 Flash). Approach from a different angle than Alpha. ${DETAIL_RULES}`, `Question: ${data.topic}`),
       ]);
       transcript.push({ role: "A", round: 1, text: a.text, backend: a.model, valid: true });
       transcript.push({ role: "B", round: 1, text: b.text, backend: b.model, valid: true });
