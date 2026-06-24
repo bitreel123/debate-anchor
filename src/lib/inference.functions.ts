@@ -33,8 +33,21 @@ export const runDebate = createServerFn({ method: "POST" })
     const gw = createLovableAiGatewayProvider(lovableKey);
 
     async function speak(model: string, system: string, prompt: string) {
-      const out = await generateText({ model: gw(model), system, prompt });
-      return { text: out.text, model };
+      try {
+        const out = await generateText({ model: gw(model), system, prompt });
+        return { text: out.text, model };
+      } catch (err: unknown) {
+        const msg = String((err as Error)?.message ?? err ?? "");
+        if (/payment_required|Not enough credits|402/i.test(msg)) {
+          throw new Error(
+            "Out of Lovable AI credits — top up your workspace at Settings → Workspace → Usage to run the courtroom. (No wallet payment is needed; this is AI Gateway credits, not 0G gas.)",
+          );
+        }
+        if (/rate.?limit|429/i.test(msg)) {
+          throw new Error("Lovable AI Gateway rate-limited. Wait a few seconds and click Call to Order again.");
+        }
+        throw err;
+      }
     }
 
     const transcript: Array<{ role: "A" | "B" | "JUDGE"; round: number; text: string; backend?: string; valid?: boolean }> = [];
