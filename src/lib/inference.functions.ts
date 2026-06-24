@@ -10,8 +10,10 @@ const Input = z.object({
 
 // Lovable AI Gateway models — Agent A uses Gemini, Agent B uses OpenAI (different
 // families produce genuinely different reasoning instead of the same model role-playing).
+// Lovable AI Gateway only currently exposes Google Gemini families; we pick two
+// distinct tiers so Agent A and Agent B still reason differently.
 const AGENT_A_MODEL = "google/gemini-2.5-pro";
-const AGENT_B_MODEL = "openai/gpt-5-mini";
+const AGENT_B_MODEL = "google/gemini-2.5-flash";
 const JUDGE_MODEL   = "google/gemini-2.5-pro";
 
 const DETAIL_RULES = `
