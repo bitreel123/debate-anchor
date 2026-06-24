@@ -86,7 +86,7 @@ End with EXACTLY one line: "Verdict: SYNTHESIS".`,
       history += `\n\n[A r${round}] ${a.text}`;
 
       const b = await speak(AGENT_B_MODEL,
-        `You are Agent B (GPT-5 mini) arguing AGAINST the proposition. Round ${round} of 3. ${DETAIL_RULES} Directly rebut Agent A's latest point with specifics.`,
+        `You are Agent B (Gemini 2.5 Flash) arguing AGAINST the proposition. Round ${round} of 3. ${DETAIL_RULES} Directly rebut Agent A's latest point with specifics.`,
         `PROPOSITION: ${data.topic}\n\nPRIOR EXCHANGE:\n${history}`,
       );
       transcript.push({ role: "B", round, text: b.text, backend: b.model, valid: true });
