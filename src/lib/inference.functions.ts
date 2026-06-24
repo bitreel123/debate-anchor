@@ -10,8 +10,10 @@ const Input = z.object({
 
 // Lovable AI Gateway models — Agent A uses Gemini, Agent B uses OpenAI (different
 // families produce genuinely different reasoning instead of the same model role-playing).
+// Lovable AI Gateway only currently exposes Google Gemini families; we pick two
+// distinct tiers so Agent A and Agent B still reason differently.
 const AGENT_A_MODEL = "google/gemini-2.5-pro";
-const AGENT_B_MODEL = "openai/gpt-5-mini";
+const AGENT_B_MODEL = "google/gemini-2.5-flash";
 const JUDGE_MODEL   = "google/gemini-2.5-pro";
 
 const DETAIL_RULES = `
@@ -31,8 +33,21 @@ export const runDebate = createServerFn({ method: "POST" })
     const gw = createLovableAiGatewayProvider(lovableKey);
 
     async function speak(model: string, system: string, prompt: string) {
-      const out = await generateText({ model: gw(model), system, prompt });
-      return { text: out.text, model };
+      try {
+        const out = await generateText({ model: gw(model), system, prompt });
+        return { text: out.text, model };
+      } catch (err: unknown) {
+        const msg = String((err as Error)?.message ?? err ?? "");
+        if (/payment_required|Not enough credits|402/i.test(msg)) {
+          throw new Error(
+            "Out of Lovable AI credits — top up your workspace at Settings → Workspace → Usage to run the courtroom. (No wallet payment is needed; this is AI Gateway credits, not 0G gas.)",
+          );
+        }
+        if (/rate.?limit|429/i.test(msg)) {
+          throw new Error("Lovable AI Gateway rate-limited. Wait a few seconds and click Call to Order again.");
+        }
+        throw err;
+      }
     }
 
     const transcript: Array<{ role: "A" | "B" | "JUDGE"; round: number; text: string; backend?: string; valid?: boolean }> = [];
@@ -40,7 +55,7 @@ export const runDebate = createServerFn({ method: "POST" })
     if (data.mode === "research") {
       const [a, b] = await Promise.all([
         speak(AGENT_A_MODEL, `You are Researcher Alpha (Gemini 2.5 Pro). ${DETAIL_RULES}`, `Question: ${data.topic}`),
-        speak(AGENT_B_MODEL, `You are Researcher Beta (GPT-5 mini). Approach from a different angle than a default LLM. ${DETAIL_RULES}`, `Question: ${data.topic}`),
+        speak(AGENT_B_MODEL, `You are Researcher Beta (Gemini 2.5 Flash). Approach from a different angle than Alpha. ${DETAIL_RULES}`, `Question: ${data.topic}`),
       ]);
       transcript.push({ role: "A", round: 1, text: a.text, backend: a.model, valid: true });
       transcript.push({ role: "B", round: 1, text: b.text, backend: b.model, valid: true });
@@ -71,7 +86,7 @@ End with EXACTLY one line: "Verdict: SYNTHESIS".`,
       history += `\n\n[A r${round}] ${a.text}`;
 
       const b = await speak(AGENT_B_MODEL,
-        `You are Agent B (GPT-5 mini) arguing AGAINST the proposition. Round ${round} of 3. ${DETAIL_RULES} Directly rebut Agent A's latest point with specifics.`,
+        `You are Agent B (Gemini 2.5 Flash) arguing AGAINST the proposition. Round ${round} of 3. ${DETAIL_RULES} Directly rebut Agent A's latest point with specifics.`,
         `PROPOSITION: ${data.topic}\n\nPRIOR EXCHANGE:\n${history}`,
       );
       transcript.push({ role: "B", round, text: b.text, backend: b.model, valid: true });
